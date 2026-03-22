@@ -16,9 +16,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("NutriChat backend starting up...")
-    # Create tables if they don't exist (dev convenience; use Alembic in production)
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables ensured.")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables ensured.")
+    except Exception as e:
+        logger.error(f"Failed to create tables: {e}")
     yield
     logger.info("NutriChat backend shutting down.")
 
