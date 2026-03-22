@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from fastapi import FastAPI
 
@@ -16,11 +17,13 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("NutriChat backend starting up...")
-    try:
+    # In production, Alembic handles table creation via start.sh
+    # Only use create_all for local dev with SQLite
+    if "sqlite" in str(engine.url):
         Base.metadata.create_all(bind=engine)
-        logger.info("Database tables ensured.")
-    except Exception as e:
-        logger.error(f"Failed to create tables: {e}")
+        logger.info("Database tables created (dev mode).")
+    else:
+        logger.info("Production mode — tables managed by Alembic.")
     yield
     logger.info("NutriChat backend shutting down.")
 
