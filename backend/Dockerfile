@@ -9,6 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN chmod +x start.sh
+EXPOSE 8000
 
-CMD ["bash", "start.sh"]
+CMD bash -c "echo 'Starting NutriChat...' && alembic upgrade head && echo 'Migrations done. Starting uvicorn on port ${PORT:-8000}...' && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
