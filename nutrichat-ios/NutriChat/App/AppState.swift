@@ -9,6 +9,9 @@ final class AppState {
     /// Whether the user is authenticated (has valid tokens).
     var isAuthenticated = false
 
+    /// Whether the user needs to complete profile setup after first login.
+    var needsProfileSetup = false
+
     /// The currently active tab in the main tab view.
     var activeTab: AppTab = .today
 
@@ -25,25 +28,45 @@ final class AppState {
     }
 
     /// Load the current user profile from the API.
-    func loadCurrentUser() async {
+    /// Returns true if profile is complete, false if onboarding is needed.
+    @discardableResult
+    func loadCurrentUser() async -> Bool {
         do {
-            currentUser = try await APIClient.shared.request(.me)
-            logger.info("User profile loaded: \(self.currentUser?.displayName ?? "unnamed", privacy: .public)")
+            let user: User = try await APIClient.shared.request(.me)
+            currentUser = user
+            logger.info("User profile loaded: \(user.displayName ?? "unnamed", privacy: .public)")
+
+            let profileComplete = user.isProfileComplete
+            needsProfileSetup = !profileComplete
+            return profileComplete
         } catch {
             logger.error("Failed to load user profile: \(error.localizedDescription, privacy: .public)")
-            if error is APIError {
-                let apiError = error as! APIError
-                if case .unauthorized = apiError {
-                    isAuthenticated = false
-                }
+            if let apiError = error as? APIError, case .unauthorized = apiError {
+                isAuthenticated = false
             }
+            return false
         }
+    }
+
+    /// Called after successful OTP verification.
+    func handleLoginSuccess() async {
+        isAuthenticated = true
+        let profileComplete = await loadCurrentUser()
+        needsProfileSetup = !profileComplete
+        logger.info("Login success, profile complete: \(profileComplete)")
+    }
+
+    /// Called after profile setup + goal confirmation.
+    func handleOnboardingComplete() {
+        needsProfileSetup = false
+        logger.info("Onboarding complete")
     }
 
     /// Sign out and reset state.
     func signOut() {
         AuthService.shared.logout()
         isAuthenticated = false
+        needsProfileSetup = false
         currentUser = nil
         activeTab = .today
         logger.info("User signed out, state reset")

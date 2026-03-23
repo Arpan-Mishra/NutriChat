@@ -21,23 +21,95 @@ struct NutriChatApp: App {
     }
 }
 
-/// Root view that switches between onboarding and the main tab view.
+/// Root view that switches between onboarding, profile setup, and the main tab view.
 struct RootView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
         Group {
-            if appState.isAuthenticated {
+            if appState.isAuthenticated && !appState.needsProfileSetup {
                 MainTabView()
+            } else if appState.isAuthenticated && appState.needsProfileSetup {
+                OnboardingProfileFlow()
             } else {
-                WelcomePlaceholderView()
+                OnboardingAuthFlow()
             }
         }
         .animation(.easeInOut, value: appState.isAuthenticated)
+        .animation(.easeInOut, value: appState.needsProfileSetup)
     }
 }
 
-/// Temporary placeholder for the main tab view — replaced in Sprint 9.
+// MARK: - Onboarding Auth Flow (Welcome → Phone/OTP)
+
+/// Handles Welcome → Phone/OTP → triggers profile setup or main app.
+struct OnboardingAuthFlow: View {
+    @Environment(AppState.self) private var appState
+    @State private var viewModel = AuthViewModel()
+    @State private var path = NavigationPath()
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            WelcomeView {
+                path.append(OnboardingStep.phoneOTP)
+            }
+            .navigationDestination(for: OnboardingStep.self) { step in
+                switch step {
+                case .phoneOTP:
+                    PhoneOTPView(viewModel: viewModel) {
+                        handleOTPVerified()
+                    }
+                case .profileSetup, .goalConfirmation:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    private func handleOTPVerified() {
+        Task {
+            await appState.handleLoginSuccess()
+        }
+    }
+}
+
+// MARK: - Onboarding Profile Flow (ProfileSetup → Goal)
+
+/// Handles ProfileSetup → GoalConfirmation for newly registered or incomplete-profile users.
+struct OnboardingProfileFlow: View {
+    @Environment(AppState.self) private var appState
+    @State private var viewModel = AuthViewModel()
+    @State private var path = NavigationPath()
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            ProfileSetupView(viewModel: viewModel) {
+                path.append(OnboardingStep.goalConfirmation)
+            }
+            .navigationDestination(for: OnboardingStep.self) { step in
+                switch step {
+                case .goalConfirmation:
+                    GoalView(viewModel: viewModel) {
+                        handleGoalConfirmed()
+                    }
+                case .phoneOTP, .profileSetup:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
+    private func handleGoalConfirmed() {
+        Task {
+            await appState.loadCurrentUser()
+            appState.handleOnboardingComplete()
+        }
+    }
+}
+
+// MARK: - Main Tab View
+
+/// Main tab view — Summary (dashboard), Log (food search), Profile.
 struct MainTabView: View {
     @Environment(AppState.self) private var appState
 
@@ -45,43 +117,28 @@ struct MainTabView: View {
         @Bindable var state = appState
 
         TabView(selection: $state.activeTab) {
-            Tab("Today", systemImage: "chart.pie", value: .today) {
-                Text("Dashboard — Sprint 9")
+            Tab("Summary", systemImage: "chart.pie", value: .today) {
+                DashboardView()
             }
             Tab("Log", systemImage: "plus.circle", value: .logFood) {
-                Text("Food Search — Sprint 10")
+                LogTabView()
             }
             Tab("Profile", systemImage: "person", value: .profile) {
-                Text("Profile — Sprint 12")
+                Text("Profile — Sprint 10")
             }
         }
     }
 }
 
-/// Temporary placeholder for the welcome/onboarding flow — replaced in Sprint 8.
-struct WelcomePlaceholderView: View {
-    @Environment(AppState.self) private var appState
+// MARK: - Log Tab View
+
+/// Log tab — wraps FoodSearchView in its own NavigationStack.
+struct LogTabView: View {
+    @State private var viewModel = FoodSearchViewModel()
 
     var body: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "fork.knife.circle.fill")
-                .font(.system(size: 80))
-                .foregroundStyle(Color.accentColor)
-
-            Text("NutriChat")
-                .font(.largeTitle.bold())
-
-            Text("Track calories. Chat to log.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-
-            Button("Debug: Simulate Login") {
-                // Temporary — remove when real auth is built in Sprint 8
-                appState.isAuthenticated = true
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 40)
+        NavigationStack {
+            FoodSearchView(viewModel: viewModel)
         }
-        .padding()
     }
 }

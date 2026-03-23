@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     edamam_app_id: str = ""
     edamam_app_key: str = ""
 
+    # Twilio (SMS/WhatsApp OTP delivery)
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_phone_number: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

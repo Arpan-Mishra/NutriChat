@@ -53,7 +53,7 @@ class ApiKey(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    key_prefix = Column(String(12), nullable=False)  # first 8 chars for identification
+    key_prefix = Column(String(25), nullable=False)  # "nutrichat_live_" + first 5 hex chars
     key_hash = Column(String(255), nullable=False)
     label = Column(String(100), default="caloriebot")
     created_at = Column(DateTime, server_default=func.now())

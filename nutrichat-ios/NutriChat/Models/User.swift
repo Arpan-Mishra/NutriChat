@@ -37,4 +37,16 @@ struct User: Codable, Identifiable {
         case timezone
         case createdAt = "created_at"
     }
+
+    /// True when all required profile fields are populated (TDEE can be computed).
+    var isProfileComplete: Bool {
+        displayName != nil
+            && dateOfBirth != nil
+            && sex != nil
+            && heightCm != nil
+            && weightKg != nil
+            && activityLevel != nil
+            && goalType != nil
+            && dailyCalorieGoal != nil
+    }
 }

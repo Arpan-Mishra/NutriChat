@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.schemas import OTPRequest, OTPVerify, TokenResponse, RefreshRequest
 from app.services.auth import (
@@ -13,6 +14,7 @@ from app.services.auth import (
     create_refresh_token,
     decode_token,
 )
+from app.services.sms import send_otp_sms
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -20,19 +22,30 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 @router.post("/otp/request")
 async def request_otp(body: OTPRequest, db: Session = Depends(get_db)):
-    """Generate and return an OTP for the given phone number.
-    In production, this would send the OTP via WhatsApp/SMS.
-    For development, the OTP is returned directly in the response."""
+    """Generate an OTP and send it via SMS.
+    In debug mode, the OTP is also returned in the response for testing."""
+    settings = get_settings()
     otp = create_otp(db, body.phone_number)
     logger.info(f"OTP generated for {body.phone_number}")
 
-    # In production: send OTP via WhatsApp/SMS and don't include it in response
-    # For development: return it directly so we can test without SMS
-    return {
+    # Send OTP via SMS (no-op in debug mode)
+    sent = await send_otp_sms(body.phone_number, otp)
+    if not sent and not settings.debug:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send OTP. Please try again.",
+        )
+
+    response = {
         "message": "OTP sent successfully",
-        "expires_in": 300,
-        "otp_debug": otp,  # REMOVE IN PRODUCTION
+        "expires_in": settings.otp_expire_seconds,
     }
+
+    # Only include OTP in response when in debug mode
+    if settings.debug:
+        response["otp_debug"] = otp
+
+    return response
 
 
 @router.post("/otp/verify", response_model=TokenResponse)

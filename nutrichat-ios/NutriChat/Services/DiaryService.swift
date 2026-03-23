@@ -11,55 +11,65 @@ protocol DiaryServiceProtocol {
     func deleteEntry(id: Int) async throws
 }
 
-/// Full diary day response — entries grouped by meal type with totals.
-struct DiaryDay: Codable {
+/// Full diary day response — matches backend `DayDiaryResponse`.
+/// Backend groups entries by meal type in a `meals` dict.
+struct DiaryDay: Decodable {
     let date: String
-    let entries: [MealEntry]
-    let totals: DiaryTotals
-    var goalProgress: GoalProgress?
+    let meals: [String: [MealEntry]]
+    let totals: [String: Double]
+    let goals: [String: Double]
+    let progressPct: [String: Double]
 
     enum CodingKeys: String, CodingKey {
-        case date, entries, totals
-        case goalProgress = "goal_progress"
+        case date, meals, totals, goals
+        case progressPct = "progress_pct"
     }
-}
 
-/// Daily macro totals.
-struct DiaryTotals: Codable {
-    let calories: Double
-    let proteinG: Double
-    let fatG: Double
-    let carbsG: Double
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        date = try container.decode(String.self, forKey: .date)
+        meals = try container.decode([String: [MealEntry]].self, forKey: .meals)
+        totals = try container.decode([String: Double].self, forKey: .totals)
 
-    enum CodingKeys: String, CodingKey {
-        case calories
-        case proteinG = "protein_g"
-        case fatG = "fat_g"
-        case carbsG = "carbs_g"
+        // Goals and progress_pct may contain null values — decode and drop nulls
+        goals = Self.decodeNullableDict(container: container, key: .goals)
+        progressPct = Self.decodeNullableDict(container: container, key: .progressPct)
     }
-}
 
-/// Progress toward daily goals.
-struct GoalProgress: Codable {
-    let calorieGoal: Double?
-    let caloriePercent: Double?
-    let proteinGoal: Double?
-    let proteinPercent: Double?
-    let fatGoal: Double?
-    let fatPercent: Double?
-    let carbsGoal: Double?
-    let carbsPercent: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case calorieGoal = "calorie_goal"
-        case caloriePercent = "calorie_percent"
-        case proteinGoal = "protein_goal"
-        case proteinPercent = "protein_percent"
-        case fatGoal = "fat_goal"
-        case fatPercent = "fat_percent"
-        case carbsGoal = "carbs_goal"
-        case carbsPercent = "carbs_percent"
+    /// Decode a JSON dict that may contain null values, dropping nulls.
+    private static func decodeNullableDict(
+        container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> [String: Double] {
+        guard let raw = try? container.decode([String: Double?].self, forKey: key) else {
+            return [:]
+        }
+        return raw.compactMapValues { $0 }
     }
+
+    /// All entries flattened into a single array.
+    var allEntries: [MealEntry] {
+        meals.values.flatMap { $0 }
+    }
+
+    /// Entries for a specific meal type.
+    func entries(for mealType: MealType) -> [MealEntry] {
+        meals[mealType.rawValue] ?? []
+    }
+
+    // MARK: - Totals helpers
+
+    var totalCalories: Double { totals["calories"] ?? 0 }
+    var totalProteinG: Double { totals["protein_g"] ?? 0 }
+    var totalFatG: Double { totals["fat_g"] ?? 0 }
+    var totalCarbsG: Double { totals["carbs_g"] ?? 0 }
+
+    // MARK: - Goal helpers
+
+    var calorieGoal: Double? { goals["calorie_goal"] }
+    var proteinGoal: Double? { goals["protein_goal"] }
+    var fatGoal: Double? { goals["fat_goal"] }
+    var carbsGoal: Double? { goals["carbs_goal"] }
 }
 
 /// Request body for creating a meal entry.

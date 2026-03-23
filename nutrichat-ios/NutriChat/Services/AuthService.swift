@@ -14,8 +14,30 @@ protocol AuthServiceProtocol {
 /// Response from OTP request endpoint.
 struct OTPRequestResponse: Codable {
     let message: String
+    let expiresIn: Int?
     /// Only present in debug/dev mode — nil in production.
-    let otp: String?
+    let otpDebug: String?
+
+    enum CodingKeys: String, CodingKey {
+        case message
+        case expiresIn = "expires_in"
+        case otpDebug = "otp_debug"
+    }
+}
+
+/// Response from GET /users/me/tdee endpoint.
+struct TDEEResponse: Codable {
+    let bmr: Double
+    let tdee: Double
+    let recommendedCalories: Int
+    let method: String
+    let goalType: String?
+
+    enum CodingKeys: String, CodingKey {
+        case bmr, tdee, method
+        case recommendedCalories = "recommended_calories"
+        case goalType = "goal_type"
+    }
 }
 
 final class AuthService: AuthServiceProtocol {

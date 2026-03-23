@@ -74,6 +74,10 @@ extension Endpoint {
         Endpoint(method: "PATCH", path: "/users/me", body: AnyCodable(fields))
     }
 
+    static var tdee: Endpoint {
+        Endpoint(method: "GET", path: "/users/me/tdee")
+    }
+
     // Food
     static func searchFood(query: String, limit: Int = 20) -> Endpoint {
         Endpoint(
