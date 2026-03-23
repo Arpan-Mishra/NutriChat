@@ -66,7 +66,7 @@ struct WelcomePlaceholderView: View {
         VStack(spacing: 24) {
             Image(systemName: "fork.knife.circle.fill")
                 .font(.system(size: 80))
-                .foregroundStyle(.accent)
+                .foregroundStyle(Color.accentColor)
 
             Text("NutriChat")
                 .font(.largeTitle.bold())

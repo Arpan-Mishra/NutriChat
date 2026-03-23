@@ -12,7 +12,7 @@ enum API {
     static let botPhone = "YOUR_BOT_PHONE_NUMBER"
 }
 
-enum App {
+enum AppInfo {
     static let bundleID = "app.nutrichat.NutriChat"
     static let deepLinkScheme = "nutrichat"
     static let minIOSVersion = "17.0"
