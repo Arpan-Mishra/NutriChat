@@ -34,11 +34,11 @@ struct APIKeyResponse: Codable, Identifiable {
 struct APIKeyCreateResponse: Codable {
     let id: Int
     let label: String
-    let rawKey: String
+    let apiKey: String
 
     enum CodingKeys: String, CodingKey {
         case id, label
-        case rawKey = "raw_key"
+        case apiKey = "api_key"
     }
 }
 

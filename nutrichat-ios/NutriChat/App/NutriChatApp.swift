@@ -124,7 +124,9 @@ struct MainTabView: View {
                 LogTabView()
             }
             Tab("Profile", systemImage: "person", value: .profile) {
-                Text("Profile — Sprint 10")
+                NavigationStack {
+                    ProfileView()
+                }
             }
         }
     }
