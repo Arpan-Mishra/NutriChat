@@ -117,8 +117,14 @@ def generate_api_key() -> str:
 
 
 def hash_api_key(api_key: str) -> str:
-    return pwd_context.hash(api_key)
+    """Hash an API key using SHA-256.
+
+    API keys are high-entropy random strings (47 chars, 128 bits of randomness),
+    so SHA-256 is sufficient — bcrypt's slow hashing adds no security benefit
+    for non-guessable secrets, and bcrypt has a 72-byte input limit.
+    """
+    return hashlib.sha256(api_key.encode()).hexdigest()
 
 
 def verify_api_key(plain_key: str, hashed_key: str) -> bool:
-    return pwd_context.verify(plain_key, hashed_key)
+    return hash_api_key(plain_key) == hashed_key
