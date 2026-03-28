@@ -82,6 +82,10 @@ final class ProfileViewModel {
         defer { isLoadingKeys = false }
         do {
             apiKeys = try await apiKeyService.listKeys()
+            // Clear generatedKey so connectionState re-evaluates from activeKey
+            if let active = activeKey, active.lastUsedAt != nil {
+                generatedKey = nil
+            }
             logger.info("Loaded \(self.apiKeys.count) API keys")
         } catch {
             logger.warning("Failed to load API keys: \(error.localizedDescription, privacy: .public)")
