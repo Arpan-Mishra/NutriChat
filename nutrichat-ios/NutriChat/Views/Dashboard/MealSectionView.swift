@@ -6,6 +6,7 @@ struct MealSectionView: View {
     let entries: [MealEntry]
     let totalCalories: Double
     var onAdd: () -> Void
+    var onEdit: ((MealEntry) -> Void)?
     var onDelete: ((MealEntry) -> Void)?
 
     var body: some View {
@@ -78,10 +79,25 @@ struct MealSectionView: View {
             Text("kcal")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onEdit?(entry)
+        }
         .contextMenu {
+            if let onEdit {
+                Button {
+                    onEdit(entry)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+            }
             if let onDelete {
                 Button(role: .destructive) {
                     onDelete(entry)
@@ -92,6 +108,7 @@ struct MealSectionView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.foodDescription ?? "Food item"), \(entry.servingSizeG?.noDecimal ?? "")g, \(entry.calories.noDecimal) calories")
+        .accessibilityHint("Tap to edit")
     }
 }
 

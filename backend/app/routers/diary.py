@@ -195,6 +195,17 @@ async def update_entry(
                 entry.fiber_g = computed["fiber_g"]
                 entry.sodium_mg = computed["sodium_mg"]
 
+    # For custom foods (no food_item_id), allow direct macro overrides
+    if not entry.food_item_id:
+        if body.calories is not None:
+            entry.calories = body.calories
+        if body.protein_g is not None:
+            entry.protein_g = body.protein_g
+        if body.fat_g is not None:
+            entry.fat_g = body.fat_g
+        if body.carbs_g is not None:
+            entry.carbs_g = body.carbs_g
+
     db.commit()
     db.refresh(entry)
     return entry

@@ -8,6 +8,7 @@ struct DashboardView: View {
     @State private var viewModel = DashboardViewModel()
     @State private var foodSearchVM = FoodSearchViewModel()
     @State private var showFoodSearch = false
+    @State private var entryToEdit: MealEntry?
 
     var body: some View {
         NavigationStack {
@@ -68,6 +69,17 @@ struct DashboardView: View {
                 if !isShowing {
                     Task { await viewModel.fetchDiary() }
                 }
+            }
+            .sheet(item: $entryToEdit) { entry in
+                MealEntryEditView(
+                    entry: entry,
+                    onUpdated: {
+                        Task { await viewModel.fetchDiary() }
+                    },
+                    onDeleted: {
+                        Task { await viewModel.fetchDiary() }
+                    }
+                )
             }
         }
     }
@@ -163,6 +175,9 @@ struct DashboardView: View {
                     totalCalories: viewModel.mealCalories(for: mealType),
                     onAdd: {
                         handleAddFood(mealType: mealType)
+                    },
+                    onEdit: { entry in
+                        entryToEdit = entry
                     },
                     onDelete: { entry in
                         Task { await viewModel.deleteEntry(entry) }

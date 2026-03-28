@@ -182,6 +182,10 @@ class MealEntryUpdate(BaseModel):
     meal_type: Optional[str] = Field(None, pattern="^(breakfast|lunch|dinner|snack)$")
     serving_size_g: Optional[float] = Field(None, gt=0)
     food_description: Optional[str] = None
+    calories: Optional[float] = Field(None, ge=0)
+    protein_g: Optional[float] = Field(None, ge=0)
+    fat_g: Optional[float] = Field(None, ge=0)
+    carbs_g: Optional[float] = Field(None, ge=0)
 
 
 class DayDiaryResponse(BaseModel):
