@@ -249,6 +249,10 @@ final class APIClient: Sendable {
     private func handleResponse<T: Decodable>(data: Data, statusCode: Int) throws -> T {
         switch statusCode {
         case 200...299:
+            // 204 No Content — return empty decoded object if possible
+            if data.isEmpty, let empty = EmptyResponse() as? T {
+                return empty
+            }
             do {
                 return try decoder.decode(T.self, from: data)
             } catch {

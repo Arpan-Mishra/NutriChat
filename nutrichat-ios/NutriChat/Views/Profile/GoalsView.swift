@@ -71,7 +71,7 @@ struct GoalsView: View {
                 Spacer()
                 Text("\(macroCalories) kcal")
                     .font(.footnote.bold())
-                    .foregroundStyle(macroCaloriesDelta == 0 ? .primary : .orange)
+                    .foregroundStyle(macroCaloriesDelta == 0 ? Color.primary : Color.orange)
             }
         } header: {
             Text("Macro Goals")

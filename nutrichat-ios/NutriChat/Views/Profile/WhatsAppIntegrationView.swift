@@ -114,7 +114,7 @@ struct WhatsAppIntegrationView: View {
                     logger.info("API key copied to clipboard")
                 } label: {
                     Image(systemName: hasCopiedKey ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(hasCopiedKey ? .green : .tint)
+                        .foregroundStyle(hasCopiedKey ? Color.green : Color.accentColor)
                 }
                 .accessibilityLabel(hasCopiedKey ? "Copied" : "Copy API key")
             }
