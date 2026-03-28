@@ -230,6 +230,35 @@ async def delete_entry(
     db.commit()
 
 
+@router.delete("/entries", status_code=200)
+async def delete_entries_bulk(
+    diary_date: date = Query(..., alias="date", description="Date to delete entries for (YYYY-MM-DD)"),
+    meal_type: str | None = Query(
+        None,
+        pattern="^(breakfast|lunch|dinner|snack)$",
+        description="Delete only entries for this meal type. Omit to delete all entries for the date.",
+    ),
+    user: User = Depends(get_current_user_flexible),
+    db: Session = Depends(get_db),
+):
+    """Delete diary entries for a date, optionally filtered by meal type.
+
+    Returns the count of deleted entries.
+    """
+    query = db.query(MealEntry).filter(
+        MealEntry.user_id == user.id,
+        MealEntry.logged_date == diary_date,
+    )
+    if meal_type:
+        query = query.filter(MealEntry.meal_type == meal_type)
+
+    count = query.count()
+    query.delete(synchronize_session="fetch")
+    db.commit()
+
+    return {"deleted": count, "date": diary_date.isoformat(), "meal_type": meal_type or "all"}
+
+
 def _resolve_serving_grams(
     db: Session, food_item_id: int, unit: str, quantity: float
 ) -> float:

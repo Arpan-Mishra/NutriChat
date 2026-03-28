@@ -66,6 +66,7 @@ def adapt_daily_totals(api_response: dict) -> dict:
         entries = []
         for entry in entries_raw:
             entries.append({
+                "entry_id": entry.get("id"),
                 "food_name": entry.get("food_description", ""),
                 "calories": float(entry.get("calories", 0)),
                 "serving_description": f"{entry.get('serving_size_g', 0)}g",

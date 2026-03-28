@@ -139,6 +139,44 @@ class NutriChatClient:
         self._handle_error(response)
         return adapt_daily_totals(response.json())
 
+    async def delete_entry(self, entry_id: int) -> None:
+        """Delete a single diary entry by ID.
+
+        Args:
+            entry_id: The entry ID to delete.
+
+        Raises:
+            NotFoundError: If the entry does not exist or belongs to another user.
+        """
+        response = await self._client.delete(f"/api/v1/diary/entries/{entry_id}")
+        self._handle_error(response)
+
+    async def delete_entries(
+        self,
+        date: str | None = None,
+        meal_type: str | None = None,
+    ) -> dict:
+        """Delete diary entries for a date, optionally filtered by meal type.
+
+        Args:
+            date: ISO 8601 date string (YYYY-MM-DD). Defaults to today.
+            meal_type: One of breakfast, lunch, dinner, snack. If None, deletes
+                all entries for the date.
+
+        Returns:
+            Dict with keys: deleted (int), date (str), meal_type (str).
+        """
+        from datetime import date as date_type
+
+        target = date or date_type.today().isoformat()
+        params: dict = {"date": target}
+        if meal_type:
+            params["meal_type"] = meal_type
+
+        response = await self._client.delete("/api/v1/diary/entries", params=params)
+        self._handle_error(response)
+        return response.json()
+
     async def get_food_by_barcode(self, barcode: str) -> dict | None:
         """Look up a food by barcode.
 
