@@ -131,34 +131,42 @@ async def search_food(db: Session, query: str, limit: int = 20) -> list[dict]:
 
     # Phase 1: Local DB (instant)
     local_results = _search_local(db, query, limit)
+    logger.info(f"[search '{query}'] Local DB: {len(local_results)} results")
 
     # Phase 2: Fan out to all external APIs concurrently
+    task_names: list[str] = []
     tasks = []
     if settings.usda_api_key:
         tasks.append(_search_usda(db, query, 10))
+        task_names.append("USDA")
     if True:  # Open Food Facts — no key needed
         tasks.append(_search_open_food_facts(db, query, 10))
+        task_names.append("OpenFoodFacts")
     if settings.edamam_app_id and settings.edamam_app_key:
         tasks.append(_search_edamam(db, query, 10))
+        task_names.append("Edamam")
     if settings.fatsecret_consumer_key and settings.fatsecret_consumer_secret:
         tasks.append(_search_fatsecret(db, query, 10))
+        task_names.append("FatSecret")
 
     external_results: list[dict] = []
     if tasks:
         try:
             async with asyncio.timeout(3.0):
                 gathered = await asyncio.gather(*tasks, return_exceptions=True)
-                for result in gathered:
+                for name, result in zip(task_names, gathered):
                     if isinstance(result, list):
+                        logger.info(f"[search '{query}'] {name}: {len(result)} results")
                         external_results.extend(result)
                     elif isinstance(result, Exception):
-                        logger.debug(f"External search source failed: {result}")
+                        logger.warning(f"[search '{query}'] {name}: FAILED — {result}")
         except asyncio.TimeoutError:
-            logger.info(f"Search fan-out timed out for '{query}', using partial results")
+            logger.warning(f"[search '{query}'] Fan-out timed out (3s), using partial results")
 
     # Merge all results and rank
     all_results = local_results + external_results
     ranked = _dedupe_and_rank(all_results, query, limit)
+    logger.info(f"[search '{query}'] Merged: {len(all_results)} total → {len(ranked)} ranked")
 
     # Cache the merged results
     _set_cached(query, ranked)
@@ -197,34 +205,42 @@ async def suggest_food(db: Session, query: str, limit: int = 10) -> list[dict]:
 
     # Phase 1: Local DB (instant)
     local_results = _search_local(db, query, limit)
+    logger.info(f"[suggest '{query}'] Local DB: {len(local_results)} results")
 
     # Phase 2: Fan out to external APIs with shorter timeout
+    task_names: list[str] = []
     tasks = []
     if settings.usda_api_key:
         tasks.append(_search_usda(db, query, 8))
+        task_names.append("USDA")
     if True:
         tasks.append(_search_open_food_facts(db, query, 8))
+        task_names.append("OpenFoodFacts")
     if settings.edamam_app_id and settings.edamam_app_key:
         tasks.append(_search_edamam(db, query, 8))
+        task_names.append("Edamam")
     if settings.fatsecret_consumer_key and settings.fatsecret_consumer_secret:
         tasks.append(_search_fatsecret(db, query, 8))
+        task_names.append("FatSecret")
 
     external_results: list[dict] = []
     if tasks:
         try:
             async with asyncio.timeout(1.5):
                 gathered = await asyncio.gather(*tasks, return_exceptions=True)
-                for result in gathered:
+                for name, result in zip(task_names, gathered):
                     if isinstance(result, list):
+                        logger.info(f"[suggest '{query}'] {name}: {len(result)} results")
                         external_results.extend(result)
                     elif isinstance(result, Exception):
-                        logger.debug(f"Suggest source failed: {result}")
+                        logger.warning(f"[suggest '{query}'] {name}: FAILED — {result}")
         except asyncio.TimeoutError:
-            logger.debug(f"Suggest fan-out timed out for '{query}', using partial results")
+            logger.warning(f"[suggest '{query}'] Fan-out timed out (1.5s), using partial results")
 
     # Merge and rank
     all_results = local_results + external_results
     ranked = _dedupe_and_rank(all_results, query, limit)
+    logger.info(f"[suggest '{query}'] Merged: {len(all_results)} total → {len(ranked)} ranked")
 
     # Cache results
     _set_cached(query, ranked)
