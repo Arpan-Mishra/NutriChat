@@ -14,6 +14,9 @@ final class FoodSearchViewModel {
     var isSearching = false
     var errorMessage: String?
 
+    /// Set to true after successfully logging a food entry. Observed by FoodSearchView to auto-dismiss.
+    var didLogFood = false
+
     /// The meal type pre-selected from the dashboard "+" button.
     var selectedMealType: MealType = .lunch
 
@@ -101,6 +104,7 @@ final class FoodSearchViewModel {
         do {
             _ = try await diaryService.createEntry(entry)
             logger.info("Logged \(food.foodName, privacy: .public) (\(servingG)g) as \(mealType.rawValue, privacy: .public)")
+            didLogFood = true
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -135,6 +139,7 @@ final class FoodSearchViewModel {
         do {
             _ = try await diaryService.createEntry(entry)
             logger.info("Logged custom food: \(name, privacy: .public)")
+            didLogFood = true
             return true
         } catch {
             errorMessage = error.localizedDescription

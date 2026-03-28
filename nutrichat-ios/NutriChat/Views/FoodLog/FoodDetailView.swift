@@ -248,7 +248,7 @@ struct FoodDetailView: View {
             mealType: selectedMealType
         )
         if success {
-            onLogged()
+            dismiss()
         }
     }
 }

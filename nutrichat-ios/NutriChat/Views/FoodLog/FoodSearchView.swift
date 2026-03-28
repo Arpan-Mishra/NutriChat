@@ -49,6 +49,12 @@ struct FoodSearchView: View {
                 dismiss()
             }
         }
+        .onChange(of: viewModel.didLogFood) { _, didLog in
+            if didLog {
+                viewModel.didLogFood = false
+                dismiss()
+            }
+        }
     }
 
     // MARK: - Search Bar
