@@ -4,6 +4,13 @@ import OSLog
 private let logger = Logger(subsystem: "app.nutrichat", category: "WhatsAppIntegration")
 
 /// Hero screen — connect/disconnect the WhatsApp bot via API keys.
+///
+/// Three states:
+/// 1. **Not connected** — no active key. Show "Generate API Key" button.
+/// 2. **Linking in progress** — key generated but `last_used_at` is nil (bot hasn't used it yet).
+///    Show key, copy button, instructions, and "Open WhatsApp" button.
+/// 3. **Connected** — key exists and `last_used_at` is set (bot has used the key).
+///    Show green badge, key details, and revoke button.
 struct WhatsAppIntegrationView: View {
     @Bindable var viewModel: ProfileViewModel
 
@@ -11,13 +18,33 @@ struct WhatsAppIntegrationView: View {
     @State private var keyToRevoke: Int?
     @State private var hasCopiedKey = false
 
+    /// Current connection state derived from API key status.
+    private var connectionState: ConnectionState {
+        if let generated = viewModel.generatedKey {
+            // Just generated — always show linking state with the raw key
+            return .linking(rawKey: generated.apiKey)
+        }
+        if let key = viewModel.activeKey {
+            if key.lastUsedAt != nil {
+                return .connected(key)
+            } else {
+                // Key exists but bot hasn't used it yet
+                return .linking(rawKey: nil)
+            }
+        }
+        return .notConnected
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                if viewModel.isWhatsAppConnected {
-                    connectedState
-                } else {
+                switch connectionState {
+                case .notConnected:
                     notConnectedState
+                case .linking(let rawKey):
+                    linkingState(rawKey: rawKey)
+                case .connected(let key):
+                    connectedState(key: key)
                 }
             }
             .padding()
@@ -46,11 +73,10 @@ struct WhatsAppIntegrationView: View {
         }
     }
 
-    // MARK: - Not Connected
+    // MARK: - State 1: Not Connected
 
     private var notConnectedState: some View {
         VStack(spacing: 20) {
-            // Illustration
             Image(systemName: "bubble.left.and.text.bubble.right.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(.tint)
@@ -64,59 +90,130 @@ struct WhatsAppIntegrationView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            // Show generated key if we just created one
-            if let generated = viewModel.generatedKey {
-                generatedKeyCard(key: generated.apiKey)
-                instructionsCard
-                openWhatsAppButton
-            } else {
-                // Generate button
-                Button {
-                    Task { await viewModel.generateAPIKey() }
-                } label: {
-                    Label("Generate API Key", systemImage: "key.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isGeneratingKey)
-                .overlay {
-                    if viewModel.isGeneratingKey {
-                        ProgressView()
+            Button {
+                Task {
+                    await viewModel.generateAPIKey()
+                    // Auto-open WhatsApp after key is generated
+                    if viewModel.generatedKey != nil {
+                        openWhatsApp(with: viewModel.generatedKey?.apiKey)
                     }
                 }
+            } label: {
+                Label("Connect WhatsApp", systemImage: "key.fill")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(viewModel.isGeneratingKey)
+            .overlay {
+                if viewModel.isGeneratingKey {
+                    ProgressView()
+                }
+            }
+            .accessibilityLabel("Generate API key and open WhatsApp")
+        }
+    }
+
+    // MARK: - State 2: Linking In Progress
+
+    private func linkingState(rawKey: String?) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 56))
+                .foregroundStyle(.orange)
+                .padding(.top, 8)
+
+            Text("Linking in Progress")
+                .font(.title2.bold())
+
+            Text("Send the message below to the WhatsApp bot to complete the connection.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            // Show the raw key if we have it (just generated)
+            if let key = rawKey {
+                apiKeyCard(key: key)
+            }
+
+            instructionsCard
+
+            // Open WhatsApp button
+            Button {
+                openWhatsApp(with: rawKey)
+            } label: {
+                Label("Open WhatsApp", systemImage: "arrow.up.right.square")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .accessibilityLabel("Open WhatsApp to send the link command")
+
+            // Refresh status
+            Button {
+                Task { await viewModel.fetchAPIKeys() }
+            } label: {
+                Label("Check Connection Status", systemImage: "arrow.clockwise")
+                    .font(.subheadline)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Refresh connection status")
+
+            // Revoke option
+            if let key = viewModel.activeKey {
+                Button(role: .destructive) {
+                    keyToRevoke = key.id
+                    showRevokeConfirmation = true
+                } label: {
+                    Text("Cancel & Start Over")
+                        .font(.caption)
+                }
+                .padding(.top, 4)
             }
         }
     }
 
-    private func generatedKeyCard(key: String) -> some View {
+    private func apiKeyCard(key: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Your API Key", systemImage: "key.fill")
                 .font(.headline)
 
-            Text("This key is shown only once. Copy it now!")
+            Text("Tap to copy. This key is shown only once.")
                 .font(.caption)
                 .foregroundStyle(.orange)
 
-            // Selectable key text
-            HStack {
-                Text(key)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            // Tappable key — copies on tap
+            Button {
+                UIPasteboard.general.string = key
+                hasCopiedKey = true
+                logger.info("API key copied to clipboard")
+            } label: {
+                HStack {
+                    Text(key)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
-                Button {
-                    UIPasteboard.general.string = key
-                    hasCopiedKey = true
-                    logger.info("API key copied to clipboard")
-                } label: {
-                    Image(systemName: hasCopiedKey ? "checkmark" : "doc.on.doc")
+                    Spacer()
+
+                    Image(systemName: hasCopiedKey ? "checkmark.circle.fill" : "doc.on.doc")
                         .foregroundStyle(hasCopiedKey ? Color.green : Color.accentColor)
+                        .font(.title3)
                 }
-                .accessibilityLabel(hasCopiedKey ? "Copied" : "Copy API key")
+                .padding(12)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .accessibilityLabel(hasCopiedKey ? "API key copied" : "Tap to copy API key")
+
+            if hasCopiedKey {
+                Text("Copied to clipboard!")
+                    .font(.caption)
+                    .foregroundStyle(.green)
             }
         }
         .cardStyle()
@@ -127,10 +224,10 @@ struct WhatsAppIntegrationView: View {
             Text("How to connect")
                 .font(.headline)
 
-            instructionRow(number: 1, text: "Copy your API key above")
-            instructionRow(number: 2, text: "Open WhatsApp and message the bot")
-            instructionRow(number: 3, text: "Send: link <your_key>")
-            instructionRow(number: 4, text: "The bot will confirm the connection")
+            instructionRow(number: 1, text: "Tap \"Open WhatsApp\" below")
+            instructionRow(number: 2, text: "Send the pre-filled message to the bot")
+            instructionRow(number: 3, text: "The bot will confirm the connection")
+            instructionRow(number: 4, text: "Come back here and tap \"Check Connection Status\"")
         }
         .cardStyle()
     }
@@ -152,23 +249,10 @@ struct WhatsAppIntegrationView: View {
         .accessibilityLabel("Step \(number): \(text)")
     }
 
-    private var openWhatsAppButton: some View {
-        Button {
-            handleOpenWhatsApp()
-        } label: {
-            Label("Open WhatsApp", systemImage: "arrow.up.right.square")
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-        }
-        .buttonStyle(.bordered)
-        .accessibilityLabel("Open WhatsApp to message the bot")
-    }
+    // MARK: - State 3: Connected
 
-    // MARK: - Connected
-
-    private var connectedState: some View {
+    private func connectedState(key: APIKeyResponse) -> some View {
         VStack(spacing: 20) {
-            // Connected badge
             VStack(spacing: 12) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 56))
@@ -177,43 +261,37 @@ struct WhatsAppIntegrationView: View {
                 Text("Connected")
                     .font(.title2.bold())
 
-                Text("Your WhatsApp bot is linked to this account.")
+                Text("Your WhatsApp bot is linked and active.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding(.top, 8)
 
-            // Active key details
-            if let key = viewModel.activeKey {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("API Key", systemImage: "key.fill")
-                        .font(.headline)
+            VStack(alignment: .leading, spacing: 12) {
+                Label("API Key", systemImage: "key.fill")
+                    .font(.headline)
 
-                    detailRow(label: "Key", value: "\(key.keyPrefix)...")
-                    detailRow(label: "Label", value: key.label)
-                    detailRow(label: "Created", value: formatTimestamp(key.createdAt))
+                detailRow(label: "Key", value: "\(key.keyPrefix)...")
+                detailRow(label: "Label", value: key.label)
+                detailRow(label: "Created", value: formatTimestamp(key.createdAt))
 
-                    if let lastUsed = key.lastUsedAt {
-                        detailRow(label: "Last used", value: formatTimestamp(lastUsed))
-                    } else {
-                        detailRow(label: "Last used", value: "Never")
-                    }
+                if let lastUsed = key.lastUsedAt {
+                    detailRow(label: "Last used", value: formatTimestamp(lastUsed))
                 }
-                .cardStyle()
-
-                // Revoke button
-                Button(role: .destructive) {
-                    keyToRevoke = key.id
-                    showRevokeConfirmation = true
-                } label: {
-                    Label("Revoke & Relink", systemImage: "xmark.circle")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Revoke API key and disconnect WhatsApp bot")
             }
+            .cardStyle()
+
+            Button(role: .destructive) {
+                keyToRevoke = key.id
+                showRevokeConfirmation = true
+            } label: {
+                Label("Revoke & Relink", systemImage: "xmark.circle")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Revoke API key and disconnect WhatsApp bot")
         }
     }
 
@@ -232,14 +310,15 @@ struct WhatsAppIntegrationView: View {
 
     // MARK: - Helpers
 
-    private func handleOpenWhatsApp() {
+    private func openWhatsApp(with key: String?) {
         let botPhone = API.botPhone
         guard botPhone != "YOUR_BOT_PHONE_NUMBER" else {
             viewModel.errorMessage = "Bot phone number not configured."
             return
         }
-        let keyText = viewModel.generatedKey?.apiKey ?? ""
-        let encoded = "link \(keyText)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let keyText = key ?? viewModel.activeKey?.keyPrefix ?? ""
+        let message = "link \(keyText)"
+        let encoded = message.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         if let url = URL(string: "whatsapp://send?phone=\(botPhone)&text=\(encoded)") {
             UIApplication.shared.open(url)
             logger.info("Opening WhatsApp deep link")
@@ -252,11 +331,18 @@ struct WhatsAppIntegrationView: View {
         if let date = formatter.date(from: timestamp) {
             return date.relativeString
         }
-        // Try without fractional seconds
         formatter.formatOptions = [.withInternetDateTime]
         if let date = formatter.date(from: timestamp) {
             return date.relativeString
         }
         return timestamp
     }
+}
+
+// MARK: - Connection State
+
+private enum ConnectionState {
+    case notConnected
+    case linking(rawKey: String?)
+    case connected(APIKeyResponse)
 }

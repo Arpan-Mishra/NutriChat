@@ -9,7 +9,7 @@ enum API {
     static var basePath: String { "\(baseURL)\(apiVersion)" }
 
     /// WhatsApp bot phone number (international format, no +).
-    static let botPhone = "YOUR_BOT_PHONE_NUMBER"
+    static let botPhone = "15551781677"
 }
 
 enum AppInfo {
