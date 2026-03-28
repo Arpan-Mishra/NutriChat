@@ -212,6 +212,10 @@ final class APIClient: Sendable {
 
         do {
             (data, response) = try await session.data(for: urlRequest)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw CancellationError()
         } catch {
             logger.error("Network error: \(error.localizedDescription, privacy: .public)")
             throw APIError.networkUnavailable
