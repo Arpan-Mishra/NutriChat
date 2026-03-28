@@ -21,6 +21,9 @@ _token_cache: dict = {"access_token": "", "expires_at": 0.0}
 
 async def _get_access_token() -> str:
     """Get a valid OAuth 2.0 access token, refreshing if expired."""
+    if not settings.fatsecret_consumer_key or not settings.fatsecret_consumer_secret:
+        raise ValueError("FatSecret credentials not configured")
+
     if _token_cache["access_token"] and time.time() < _token_cache["expires_at"]:
         return _token_cache["access_token"]
 

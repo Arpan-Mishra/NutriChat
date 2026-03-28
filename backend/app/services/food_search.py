@@ -191,8 +191,15 @@ def _cache_usda_food(db: Session, food: dict) -> Optional[FoodItem]:
     if "calories" not in nutrients:
         return None
 
-    serving_desc = food.get("servingSize", "100g") if food.get("servingSize") else "100g"
-    serving_g = float(food.get("servingSizeUnit", 100)) if food.get("servingSizeUnit") else 100.0
+    raw_serving_size = food.get("servingSize")
+    raw_unit = food.get("servingSizeUnit", "g") or "g"
+    # servingSizeUnit is a unit string like "g", "ml", "MLT" — NOT a number
+    # servingSize is the numeric amount
+    try:
+        serving_g = float(raw_serving_size) if raw_serving_size else 100.0
+    except (ValueError, TypeError):
+        serving_g = 100.0
+    serving_desc = f"{int(serving_g)}{raw_unit}" if raw_serving_size else "100g"
 
     item = FoodItem(
         external_id=fdc_id,
