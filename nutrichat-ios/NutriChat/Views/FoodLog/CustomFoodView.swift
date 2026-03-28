@@ -81,9 +81,10 @@ struct CustomFoodView: View {
                         Spacer()
                         if isLogging {
                             ProgressView()
+                        } else {
+                            Text("Add to Diary")
+                                .font(.headline)
                         }
-                        Text("Add to Diary")
-                            .font(.headline)
                         Spacer()
                     }
                 }

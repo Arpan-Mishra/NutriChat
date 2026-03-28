@@ -195,9 +195,31 @@ final class CameraViewController: UIViewController {
                     self?.setupCamera()
                 }
             }
-        default:
+        case .denied, .restricted:
             logger.warning("Camera access denied")
+            DispatchQueue.main.async { [weak self] in
+                self?.showPermissionDenied()
+            }
+        @unknown default:
+            logger.warning("Unknown camera authorization status")
         }
+    }
+
+    private func showPermissionDenied() {
+        let label = UILabel()
+        label.text = "Camera access is required to scan barcodes.\n\nGo to Settings > NutriChat to enable it."
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.textColor = .secondaryLabel
+        label.font = .preferredFont(forTextStyle: .body)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+        ])
     }
 
     private func setupCamera() {

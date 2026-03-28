@@ -42,7 +42,7 @@ struct MealSectionView: View {
             if entries.isEmpty {
                 Text("No items logged")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal)
                     .padding(.bottom, 12)
             } else {
@@ -91,6 +91,7 @@ struct MealSectionView: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(entry.foodDescription ?? "Food item"), \(entry.servingSizeG?.noDecimal ?? "")g, \(entry.calories.noDecimal) calories")
     }
 }
 

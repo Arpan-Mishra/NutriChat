@@ -95,6 +95,7 @@ struct DashboardView: View {
                         viewModel.goToToday()
                     }
                     .font(.caption)
+                    .accessibilityLabel("Go to today")
                 }
             }
 

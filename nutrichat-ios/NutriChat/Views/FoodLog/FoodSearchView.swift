@@ -128,10 +128,19 @@ struct FoodSearchView: View {
                 .foregroundStyle(.secondary)
             Text("No results found")
                 .font(.headline)
-            Text("Try a different search or add a custom food")
+            Text("Try a different search or add a custom food.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            NavigationLink(destination: CustomFoodView(viewModel: viewModel) {
+                dismiss()
+            }) {
+                Text("Add Custom Food")
+                    .font(.subheadline.bold())
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Add custom food instead")
         }
         .padding()
     }
@@ -210,6 +219,7 @@ struct FoodSearchView: View {
         .padding(.vertical, 10)
         .background(Color(.systemBackground))
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(food.foodName), \(food.brand ?? ""), \(food.caloriesPer100g.noDecimal) calories per 100 grams")
     }
 }
 

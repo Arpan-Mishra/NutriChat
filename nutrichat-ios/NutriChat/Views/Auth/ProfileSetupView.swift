@@ -165,6 +165,12 @@ struct ProfileSetupView: View {
 
     private var submitSection: some View {
         Section {
+            if showValidation && !viewModel.canSubmitProfile {
+                Text("Please fill in all required fields (marked with *)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
             if let error = viewModel.profileErrorMessage {
                 Text(error)
                     .font(.caption)

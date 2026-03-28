@@ -159,7 +159,11 @@ struct FoodDetailView: View {
             }
             .padding(.horizontal, 60)
 
-            if food.servingDescription != "100g" {
+            if servingText.isEmpty || (Double(servingText) ?? -1) <= 0 {
+                Text("Enter a valid serving size")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if food.servingDescription != "100g" {
                 Text("1 serving = \(food.servingDescription)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
