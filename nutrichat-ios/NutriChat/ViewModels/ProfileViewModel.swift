@@ -96,7 +96,7 @@ final class ProfileViewModel {
         isGeneratingKey = true
         defer { isGeneratingKey = false }
         do {
-            let response = try await apiKeyService.createKey(label: "caloriebot")
+            let response = try await apiKeyService.createKey(label: "nutribot")
             generatedKey = response
             await fetchAPIKeys()
             logger.info("API key generated successfully")
@@ -123,7 +123,7 @@ final class ProfileViewModel {
         apiKeys.first(where: { $0.isActive })
     }
 
-    /// Whether the user has an active WhatsApp bot connection.
+    /// Whether the user has an active NutriBot connection.
     var isWhatsAppConnected: Bool {
         activeKey != nil
     }

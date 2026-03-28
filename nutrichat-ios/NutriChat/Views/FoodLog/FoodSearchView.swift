@@ -49,6 +49,9 @@ struct FoodSearchView: View {
                 dismiss()
             }
         }
+        .task {
+            await viewModel.fetchRecentFoods()
+        }
         .onChange(of: viewModel.didLogFood) { _, didLog in
             if didLog {
                 viewModel.didLogFood = false
@@ -111,9 +114,13 @@ struct FoodSearchView: View {
             emptyStateView
             Spacer()
         } else if viewModel.searchResults.isEmpty {
-            Spacer()
-            promptView
-            Spacer()
+            if !viewModel.recentFoods.isEmpty {
+                recentFoodsSection
+            } else {
+                Spacer()
+                promptView
+                Spacer()
+            }
         } else {
             VStack(spacing: 0) {
                 if viewModel.isSearchingFull {
@@ -140,6 +147,68 @@ struct FoodSearchView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - Recent Foods
+
+    private var recentFoodsSection: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Recently Logged")
+                    .font(.headline)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                LazyVStack(spacing: 1) {
+                    ForEach(viewModel.recentFoods) { entry in
+                        recentFoodRow(entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private func recentFoodRow(_ entry: MealEntry) -> some View {
+        Button {
+            viewModel.searchQuery = entry.foodDescription ?? ""
+            viewModel.handleSearchSubmitted()
+        } label: {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.foodDescription ?? "Food item")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        if let serving = entry.servingSizeG {
+                            Text("\(serving.noDecimal)g")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Text(entry.mealType.capitalized)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                Spacer()
+
+                Text("\(entry.calories.noDecimal) kcal")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(Color(.systemBackground))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(entry.foodDescription ?? "Food"), \(entry.calories.noDecimal) calories. Tap to search.")
     }
 
     private var emptyStateView: some View {

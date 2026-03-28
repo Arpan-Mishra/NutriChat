@@ -9,6 +9,7 @@ protocol DiaryServiceProtocol {
     func createEntry(_ entry: MealEntryCreate) async throws -> MealEntry
     func updateEntry(id: Int, update: MealEntryUpdate) async throws -> MealEntry
     func deleteEntry(id: Int) async throws
+    func fetchRecentFoods(limit: Int) async throws -> [MealEntry]
 }
 
 /// Full diary day response — matches backend `DayDiaryResponse`.
@@ -148,5 +149,11 @@ final class DiaryService: DiaryServiceProtocol {
     func deleteEntry(id: Int) async throws {
         logger.info("Deleting entry \(id)")
         try await APIClient.shared.requestVoid(.deleteEntry(id: id))
+    }
+
+    /// Fetch recently logged foods, deduplicated by name.
+    func fetchRecentFoods(limit: Int = 10) async throws -> [MealEntry] {
+        logger.info("Fetching recent foods (limit: \(limit))")
+        return try await APIClient.shared.request(.recentFoods(limit: limit))
     }
 }

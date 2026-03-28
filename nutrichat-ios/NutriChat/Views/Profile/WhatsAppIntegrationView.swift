@@ -3,13 +3,13 @@ import OSLog
 
 private let logger = Logger(subsystem: "app.nutrichat", category: "WhatsAppIntegration")
 
-/// Hero screen — connect/disconnect the WhatsApp bot via API keys.
+/// Hero screen — connect/disconnect NutriBot (WhatsApp) via API keys.
 ///
 /// Three states:
 /// 1. **Not connected** — no active key. Show "Generate API Key" button.
-/// 2. **Linking in progress** — key generated but `last_used_at` is nil (bot hasn't used it yet).
+/// 2. **Linking in progress** — key generated but `last_used_at` is nil (NutriBot hasn't used it yet).
 ///    Show key, copy button, instructions, and "Open WhatsApp" button.
-/// 3. **Connected** — key exists and `last_used_at` is set (bot has used the key).
+/// 3. **Connected** — key exists and `last_used_at` is set (NutriBot has used the key).
 ///    Show green badge, key details, and revoke button.
 struct WhatsAppIntegrationView: View {
     @Bindable var viewModel: ProfileViewModel
@@ -49,7 +49,7 @@ struct WhatsAppIntegrationView: View {
             }
             .padding()
         }
-        .navigationTitle("WhatsApp Bot")
+        .navigationTitle("NutriBot")
         .task {
             await viewModel.fetchAPIKeys()
         }
@@ -61,7 +61,7 @@ struct WhatsAppIntegrationView: View {
                 }
             }
         } message: {
-            Text("The WhatsApp bot will lose access to your account. You can generate a new key to reconnect.")
+            Text("NutriBot will lose access to your account. You can generate a new key to reconnect.")
         }
         .alert("Error", isPresented: .init(
             get: { viewModel.errorMessage != nil },
@@ -82,10 +82,10 @@ struct WhatsAppIntegrationView: View {
                 .foregroundStyle(.tint)
                 .padding(.top, 8)
 
-            Text("Connect WhatsApp Bot")
+            Text("Connect NutriBot")
                 .font(.title2.bold())
 
-            Text("Log meals by texting our WhatsApp bot — everything syncs here automatically.")
+            Text("Log meals by texting NutriBot on WhatsApp — everything syncs here automatically.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -126,7 +126,7 @@ struct WhatsAppIntegrationView: View {
             Text("Linking in Progress")
                 .font(.title2.bold())
 
-            Text("Send the message below to the WhatsApp bot to complete the connection.")
+            Text("Send the message below to NutriBot on WhatsApp to complete the connection.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -225,8 +225,8 @@ struct WhatsAppIntegrationView: View {
                 .font(.headline)
 
             instructionRow(number: 1, text: "Tap \"Open WhatsApp\" below")
-            instructionRow(number: 2, text: "Send the pre-filled message to the bot")
-            instructionRow(number: 3, text: "The bot will confirm the connection")
+            instructionRow(number: 2, text: "Send the pre-filled message to NutriBot")
+            instructionRow(number: 3, text: "NutriBot will confirm the connection")
             instructionRow(number: 4, text: "Come back here and tap \"Check Connection Status\"")
         }
         .cardStyle()
@@ -261,7 +261,7 @@ struct WhatsAppIntegrationView: View {
                 Text("Connected")
                     .font(.title2.bold())
 
-                Text("Your WhatsApp bot is linked and active.")
+                Text("NutriBot is linked and active.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -291,7 +291,7 @@ struct WhatsAppIntegrationView: View {
                     .padding(.vertical, 12)
             }
             .buttonStyle(.bordered)
-            .accessibilityLabel("Revoke API key and disconnect WhatsApp bot")
+            .accessibilityLabel("Revoke API key and disconnect NutriBot")
         }
     }
 
@@ -313,7 +313,7 @@ struct WhatsAppIntegrationView: View {
     private func openWhatsApp(with key: String?) {
         let botPhone = API.botPhone
         guard botPhone != "YOUR_BOT_PHONE_NUMBER" else {
-            viewModel.errorMessage = "Bot phone number not configured."
+            viewModel.errorMessage = "NutriBot phone number not configured."
             return
         }
         let keyText = key ?? viewModel.activeKey?.keyPrefix ?? ""

@@ -98,6 +98,38 @@ async def create_entry(
     return entry
 
 
+@router.get("/recent-foods", response_model=list[MealEntryResponse])
+async def get_recent_foods(
+    limit: int = Query(default=10, ge=1, le=50),
+    user: User = Depends(get_current_user_flexible),
+    db: Session = Depends(get_db),
+):
+    """Get recently logged foods, deduplicated by food description, most recent first."""
+    from sqlalchemy import distinct
+
+    # Get recent unique food descriptions with their latest entry
+    entries = (
+        db.query(MealEntry)
+        .filter(MealEntry.user_id == user.id)
+        .order_by(MealEntry.logged_at.desc())
+        .limit(100)  # fetch more to deduplicate
+        .all()
+    )
+
+    # Deduplicate by food_description, keeping the most recent
+    seen: set[str] = set()
+    unique: list[MealEntry] = []
+    for entry in entries:
+        desc = (entry.food_description or "").lower().strip()
+        if desc and desc not in seen:
+            seen.add(desc)
+            unique.append(entry)
+            if len(unique) >= limit:
+                break
+
+    return unique
+
+
 @router.get("/{diary_date}", response_model=DayDiaryResponse)
 async def get_day(
     diary_date: date,

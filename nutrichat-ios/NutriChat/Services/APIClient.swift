@@ -126,6 +126,12 @@ extension Endpoint {
         Endpoint(method: "DELETE", path: "/diary/entries/\(id)")
     }
 
+    static func recentFoods(limit: Int = 10) -> Endpoint {
+        Endpoint(method: "GET", path: "/diary/recent-foods", queryItems: [
+            URLQueryItem(name: "limit", value: String(limit))
+        ])
+    }
+
     // Goals
     static var goals: Endpoint {
         Endpoint(method: "GET", path: "/goals/", queryItems: [URLQueryItem(name: "active_only", value: "true")])

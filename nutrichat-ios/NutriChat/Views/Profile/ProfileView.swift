@@ -124,7 +124,7 @@ struct ProfileView: View {
             } label: {
                 navRow(
                     icon: "bubble.left.and.text.bubble.right",
-                    title: "WhatsApp Bot",
+                    title: "NutriBot",
                     subtitle: viewModel.isWhatsAppConnected ? "Connected" : "Not connected",
                     badgeColor: viewModel.isWhatsAppConnected ? .green : nil
                 )

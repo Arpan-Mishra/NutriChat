@@ -15,6 +15,7 @@ private let maxCacheEntries = 50
 final class FoodSearchViewModel {
     var searchQuery = ""
     var searchResults: [FoodSearchResult] = []
+    var recentFoods: [MealEntry] = []
     var isSearching = false
     var isSearchingFull = false
     var errorMessage: String?
@@ -177,6 +178,18 @@ final class FoodSearchViewModel {
         while cacheOrder.count > maxCacheEntries {
             let oldest = cacheOrder.removeFirst()
             searchCache.removeValue(forKey: oldest)
+        }
+    }
+
+    // MARK: - Recent Foods
+
+    /// Fetch recently logged foods for the empty state.
+    func fetchRecentFoods() async {
+        do {
+            recentFoods = try await diaryService.fetchRecentFoods(limit: 10)
+            logger.debug("Loaded \(self.recentFoods.count) recent foods")
+        } catch {
+            logger.debug("Failed to load recent foods: \(error.localizedDescription, privacy: .public)")
         }
     }
 
