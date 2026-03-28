@@ -4,8 +4,8 @@ import OSLog
 private let logger = Logger(subsystem: "app.nutrichat", category: "FoodSearchViewModel")
 
 /// Debounce intervals for search.
-private let suggestDebounceNs: UInt64 = 150_000_000   // 150ms for typeahead
-private let fullSearchDebounceNs: UInt64 = 500_000_000 // 500ms for full search
+private let suggestDebounceNs: UInt64 = 300_000_000   // 300ms — backend now fans out to all sources
+private let fullSearchDebounceNs: UInt64 = 800_000_000 // 800ms for explicit full search (more results)
 
 /// Maximum number of cached search results to keep in memory.
 private let maxCacheEntries = 50
@@ -47,7 +47,7 @@ final class FoodSearchViewModel {
 
     // MARK: - Search
 
-    /// Called whenever the search query changes. Fires typeahead + schedules full search.
+    /// Called whenever the search query changes. Fires suggest (which now hits all sources on backend).
     func handleSearchQueryChanged() {
         suggestTask?.cancel()
         fullSearchTask?.cancel()
@@ -62,27 +62,26 @@ final class FoodSearchViewModel {
             return
         }
 
-        // Check cache first
+        // Check exact cache hit
         if let cached = searchCache[query.lowercased()] {
             searchResults = cached
             return
         }
 
+        // Prefix-based filtering: if "chick" is cached, filter for "chicken" instantly
+        let prefixFiltered = filterFromCachedPrefix(query: query)
+        if let filtered = prefixFiltered, !filtered.isEmpty {
+            searchResults = filtered
+            // Still fire a background suggest to get better results
+        }
+
         guard query.count >= 1 else { return }
 
-        // Typeahead: fast suggest from local DB after 150ms
+        // Suggest: backend now fans out to all sources (1.5s timeout on backend)
         suggestTask = Task {
             try? await Task.sleep(nanoseconds: suggestDebounceNs)
             guard !Task.isCancelled else { return }
             await performSuggest(query: query)
-        }
-
-        // Full search: after 500ms, hit all external APIs
-        guard query.count >= 2 else { return }
-        fullSearchTask = Task {
-            try? await Task.sleep(nanoseconds: fullSearchDebounceNs)
-            guard !Task.isCancelled else { return }
-            await performFullSearch(query: query)
         }
     }
 
@@ -99,7 +98,7 @@ final class FoodSearchViewModel {
         }
     }
 
-    /// Fast typeahead — local DB only.
+    /// Suggest — backend fans out to all sources with 1.5s timeout.
     private func performSuggest(query: String) async {
         isSearching = true
         errorMessage = nil
@@ -114,7 +113,7 @@ final class FoodSearchViewModel {
             // Ignore
         } catch {
             guard !Task.isCancelled else { return }
-            // Don't show errors for suggest — full search will follow
+            // Don't show errors for suggest — user can press Search for full search
             logger.debug("Suggest failed: \(error.localizedDescription, privacy: .public)")
         }
 
@@ -123,7 +122,7 @@ final class FoodSearchViewModel {
         }
     }
 
-    /// Full layered search — local + external APIs.
+    /// Full search — backend fans out with 3s timeout, returns up to 20 results.
     private func performFullSearch(query: String) async {
         isSearchingFull = true
         isSearching = true
@@ -146,6 +145,24 @@ final class FoodSearchViewModel {
             errorMessage = error.localizedDescription
             logger.error("Full search failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// Filter cached results from a shorter prefix of the current query.
+    private func filterFromCachedPrefix(query: String) -> [FoodSearchResult]? {
+        let q = query.lowercased()
+        // Walk backwards from (len-1) to 1 to find longest cached prefix
+        for prefixLen in stride(from: q.count - 1, through: 1, by: -1) {
+            let prefix = String(q.prefix(prefixLen))
+            if let cached = searchCache[prefix] {
+                let filtered = cached.filter { result in
+                    result.foodName.lowercased().contains(q)
+                }
+                if !filtered.isEmpty {
+                    return filtered
+                }
+            }
+        }
+        return nil
     }
 
     /// Cache search results with LRU eviction.

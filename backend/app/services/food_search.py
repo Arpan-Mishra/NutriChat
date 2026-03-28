@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 from typing import Optional
 
 import httpx
@@ -13,74 +15,221 @@ settings = get_settings()
 
 HTTPX_TIMEOUT = 10.0
 
+# --- Server-side query cache (TTL-based) ---
+
+_query_cache: dict[str, dict] = {}  # key → {"results": [...], "expires_at": float}
+CACHE_TTL_SECONDS = 60.0
+
+
+def _get_cached(query: str) -> Optional[list[dict]]:
+    """Return cached results if still valid, else None."""
+    key = query.lower().strip()
+    entry = _query_cache.get(key)
+    if entry and time.time() < entry["expires_at"]:
+        return entry["results"]
+    if entry:
+        del _query_cache[key]
+    return None
+
+
+def _set_cached(query: str, results: list[dict]) -> None:
+    """Cache results with TTL. Evict oldest if cache exceeds 200 entries."""
+    key = query.lower().strip()
+    _query_cache[key] = {"results": results, "expires_at": time.time() + CACHE_TTL_SECONDS}
+    # Simple eviction: remove expired entries when cache grows large
+    if len(_query_cache) > 200:
+        now = time.time()
+        expired = [k for k, v in _query_cache.items() if now >= v["expires_at"]]
+        for k in expired:
+            del _query_cache[k]
+
+
+# --- Relevance scoring ---
+
+# Source quality multipliers — higher = more trusted
+SOURCE_QUALITY = {
+    "local": 1.2,
+    "usda": 1.1,
+    "fatsecret": 1.0,
+    "edamam": 1.0,
+    "off": 0.9,
+    "custom": 0.8,
+}
+
+
+def _score_result(result: dict, query: str) -> float:
+    """Compute a relevance score for ranking search results.
+
+    Scoring factors:
+    - Match type: exact > prefix > word-boundary > contains
+    - Source quality: verified/USDA ranked higher
+    - Name length: shorter names preferred (more specific)
+    """
+    name = result.get("food_name", "").lower()
+    q = query.lower().strip()
+
+    # Match type score
+    if name == q:
+        match_score = 1.0     # exact match
+    elif name.startswith(q):
+        match_score = 0.85    # prefix match
+    elif f" {q}" in f" {name}":
+        # Word boundary match — query matches start of any word
+        match_score = 0.7
+    elif q in name:
+        match_score = 0.5     # substring/contains
+    else:
+        match_score = 0.2     # fuzzy/partial (came from an API that matched it)
+
+    # Source quality multiplier
+    source = result.get("source", "custom")
+    source_mult = SOURCE_QUALITY.get(source, 0.8)
+
+    # Name length penalty — shorter names are more specific and relevant
+    # Normalize: names under 20 chars get full score, longer names get penalized
+    name_len = len(name)
+    length_factor = max(0.5, 1.0 - (name_len - 20) * 0.01) if name_len > 20 else 1.0
+
+    return match_score * source_mult * length_factor
+
+
+def _dedupe_and_rank(all_results: list[dict], query: str, limit: int) -> list[dict]:
+    """Deduplicate by food_id, score, sort, and return top N results."""
+    seen_ids: set[int] = set()
+    unique: list[dict] = []
+
+    for r in all_results:
+        fid = r.get("food_id")
+        if fid and fid not in seen_ids:
+            seen_ids.add(fid)
+            unique.append(r)
+
+    # Score and sort
+    scored = [(r, _score_result(r, query)) for r in unique]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    return [r for r, _ in scored[:limit]]
+
+
+# --- Public API ---
 
 async def search_food(db: Session, query: str, limit: int = 20) -> list[dict]:
-    """Layered food search: local DB → USDA → Open Food Facts → Edamam → FatSecret.
-    Results from external APIs are cached into food_items table."""
+    """Scatter-gather food search: fans out to all sources in parallel.
+
+    All external APIs are called concurrently via asyncio.gather with a 3s timeout.
+    Results are merged, deduplicated, and ranked by relevance score.
+    """
     if not query or not query.strip():
         return []
 
     query = query.strip()
 
-    # Layer 1: Local database
-    results = _search_local(db, query, limit)
-    if len(results) >= limit:
-        return results[:limit]
+    # Check server-side cache
+    cached = _get_cached(query)
+    if cached:
+        return cached[:limit]
 
-    remaining = limit - len(results)
-    seen_ids = {r["food_id"] for r in results}
+    # Phase 1: Local DB (instant)
+    local_results = _search_local(db, query, limit)
 
-    # Layer 2: USDA FoodData Central
+    # Phase 2: Fan out to all external APIs concurrently
+    tasks = []
     if settings.usda_api_key:
-        usda_results = await _search_usda(db, query, remaining)
-        for r in usda_results:
-            if r["food_id"] not in seen_ids:
-                results.append(r)
-                seen_ids.add(r["food_id"])
-
-    remaining = limit - len(results)
-    if remaining <= 0:
-        return results[:limit]
-
-    # Layer 3: Open Food Facts
-    off_results = await _search_open_food_facts(db, query, remaining)
-    for r in off_results:
-        if r["food_id"] not in seen_ids:
-            results.append(r)
-            seen_ids.add(r["food_id"])
-
-    remaining = limit - len(results)
-    if remaining <= 0:
-        return results[:limit]
-
-    # Layer 4: Edamam
+        tasks.append(_search_usda(db, query, 10))
+    if True:  # Open Food Facts — no key needed
+        tasks.append(_search_open_food_facts(db, query, 10))
     if settings.edamam_app_id and settings.edamam_app_key:
-        edamam_results = await _search_edamam(db, query, remaining)
-        for r in edamam_results:
-            if r["food_id"] not in seen_ids:
-                results.append(r)
-                seen_ids.add(r["food_id"])
-
-    remaining = limit - len(results)
-    if remaining <= 0:
-        return results[:limit]
-
-    # Layer 5: FatSecret
+        tasks.append(_search_edamam(db, query, 10))
     if settings.fatsecret_consumer_key and settings.fatsecret_consumer_secret:
-        fs_results = await _search_fatsecret(db, query, remaining)
-        for r in fs_results:
-            if r["food_id"] not in seen_ids:
-                results.append(r)
-                seen_ids.add(r["food_id"])
+        tasks.append(_search_fatsecret(db, query, 10))
 
-    return results[:limit]
+    external_results: list[dict] = []
+    if tasks:
+        try:
+            async with asyncio.timeout(3.0):
+                gathered = await asyncio.gather(*tasks, return_exceptions=True)
+                for result in gathered:
+                    if isinstance(result, list):
+                        external_results.extend(result)
+                    elif isinstance(result, Exception):
+                        logger.debug(f"External search source failed: {result}")
+        except asyncio.TimeoutError:
+            logger.info(f"Search fan-out timed out for '{query}', using partial results")
+
+    # Merge all results and rank
+    all_results = local_results + external_results
+    ranked = _dedupe_and_rank(all_results, query, limit)
+
+    # Cache the merged results
+    _set_cached(query, ranked)
+
+    return ranked
 
 
 async def suggest_food(db: Session, query: str, limit: int = 10) -> list[dict]:
-    """Lightweight typeahead — local DB only, no external API calls."""
+    """Fast typeahead — fans out to all sources with a shorter 1.5s timeout.
+
+    Returns top results ranked by relevance. Uses server-side cache to avoid
+    redundant API calls when the user is still typing.
+    """
     if not query or not query.strip():
         return []
-    return _search_local(db, query.strip(), limit)
+
+    query = query.strip()
+
+    # Check server-side cache first
+    cached = _get_cached(query)
+    if cached:
+        return cached[:limit]
+
+    # Also check if a prefix of this query was recently searched
+    # e.g., if "chick" was cached, filter those results for "chicken"
+    q_lower = query.lower()
+    for prefix_len in range(max(1, len(q_lower) - 1), 0, -1):
+        prefix = q_lower[:prefix_len]
+        prefix_cached = _get_cached(prefix)
+        if prefix_cached:
+            # Filter cached prefix results that still match
+            filtered = [r for r in prefix_cached if query.lower() in r.get("food_name", "").lower()]
+            if len(filtered) >= limit:
+                return _dedupe_and_rank(filtered, query, limit)
+            break
+
+    # Phase 1: Local DB (instant)
+    local_results = _search_local(db, query, limit)
+
+    # Phase 2: Fan out to external APIs with shorter timeout
+    tasks = []
+    if settings.usda_api_key:
+        tasks.append(_search_usda(db, query, 8))
+    if True:
+        tasks.append(_search_open_food_facts(db, query, 8))
+    if settings.edamam_app_id and settings.edamam_app_key:
+        tasks.append(_search_edamam(db, query, 8))
+    if settings.fatsecret_consumer_key and settings.fatsecret_consumer_secret:
+        tasks.append(_search_fatsecret(db, query, 8))
+
+    external_results: list[dict] = []
+    if tasks:
+        try:
+            async with asyncio.timeout(1.5):
+                gathered = await asyncio.gather(*tasks, return_exceptions=True)
+                for result in gathered:
+                    if isinstance(result, list):
+                        external_results.extend(result)
+                    elif isinstance(result, Exception):
+                        logger.debug(f"Suggest source failed: {result}")
+        except asyncio.TimeoutError:
+            logger.debug(f"Suggest fan-out timed out for '{query}', using partial results")
+
+    # Merge and rank
+    all_results = local_results + external_results
+    ranked = _dedupe_and_rank(all_results, query, limit)
+
+    # Cache results
+    _set_cached(query, ranked)
+
+    return ranked
 
 
 async def search_by_barcode(db: Session, barcode: str) -> Optional[dict]:
