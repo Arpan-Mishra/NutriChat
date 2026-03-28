@@ -6,6 +6,15 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+class FoodServing(BaseModel):
+    id: int
+    serving_description: str
+    serving_size_g: float
+    metric_serving_amount: Optional[float] = None
+    metric_serving_unit: Optional[str] = None
+    is_default: bool = False
+
+
 class FoodItem(BaseModel):
     food_id: int
     food_name: str
@@ -17,6 +26,7 @@ class FoodItem(BaseModel):
     carbs_per_100g: float
     serving_size_g: float
     serving_description: str
+    servings: list[FoodServing] = []
 
 
 class MealEntry(BaseModel):
@@ -26,6 +36,8 @@ class MealEntry(BaseModel):
     meal_type: str
     food_description: str
     serving_size_g: float
+    serving_unit: Optional[str] = None
+    serving_quantity: Optional[float] = None
     calories: float
     protein_g: float
     fat_g: float

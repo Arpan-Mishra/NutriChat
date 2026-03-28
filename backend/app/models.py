@@ -86,6 +86,23 @@ class FoodItem(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     meal_entries = relationship("MealEntry", back_populates="food_item")
+    servings = relationship("FoodServing", back_populates="food_item", cascade="all, delete-orphan")
+
+
+class FoodServing(Base):
+    """Available serving sizes for a food item (e.g. 1 cup = 240g, 1 tbsp = 15g)."""
+    __tablename__ = "food_servings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    food_item_id = Column(Integer, ForeignKey("food_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    serving_description = Column(String(200), nullable=False)  # "1 cup", "1 tbsp", "100g"
+    serving_size_g = Column(Float, nullable=False)  # gram equivalent
+    metric_serving_amount = Column(Float, nullable=True)  # e.g. 240 for "240ml"
+    metric_serving_unit = Column(String(10), nullable=True)  # "g" or "ml"
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    food_item = relationship("FoodItem", back_populates="servings")
 
 
 class MealEntry(Base):
@@ -97,6 +114,8 @@ class MealEntry(Base):
     meal_type = Column(String(20), nullable=False)  # breakfast, lunch, dinner, snack
     food_description = Column(Text, nullable=False)
     serving_size_g = Column(Float, nullable=False)
+    serving_unit = Column(String(20), nullable=True)  # g, ml, cup, tbsp, tsp, serving
+    serving_quantity = Column(Float, nullable=True)  # e.g. 1.5 cups
     calories = Column(Float, nullable=False)
     protein_g = Column(Float, default=0)
     fat_g = Column(Float, default=0)

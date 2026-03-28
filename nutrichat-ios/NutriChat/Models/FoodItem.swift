@@ -17,9 +17,10 @@ struct FoodItem: Codable, Identifiable {
     let source: String
     var isIndian: Bool?
     var verified: Bool?
+    var servings: [FoodServing]?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, brand, barcode, source, verified
+        case id, name, brand, barcode, source, verified, servings
         case caloriesPer100g = "calories_per_100g"
         case proteinPer100g = "protein_per_100g"
         case fatPer100g = "fat_per_100g"

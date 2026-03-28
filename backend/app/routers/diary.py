@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, MealEntry, FoodItem
+from app.models import User, MealEntry, FoodItem, FoodServing
 from app.schemas import (
     MealEntryCreate,
     MealEntryResponse,
@@ -12,6 +12,17 @@ from app.schemas import (
     DayDiaryResponse,
 )
 from app.middleware.auth import get_current_user_flexible
+
+# Standard unit conversions (approximate gram equivalents for generic foods)
+STANDARD_UNIT_GRAMS = {
+    "g": 1.0,
+    "ml": 1.0,
+    "cup": 240.0,
+    "tbsp": 15.0,
+    "tsp": 5.0,
+    "piece": 100.0,
+    "serving": 100.0,
+}
 
 router = APIRouter(prefix="/api/v1/diary", tags=["diary"])
 
@@ -36,11 +47,25 @@ async def create_entry(
     db: Session = Depends(get_db),
 ):
     """Log a food entry to the diary."""
+    serving_size_g = body.serving_size_g
+
+    # Resolve unit → grams if unit + quantity provided
+    if body.serving_unit and body.serving_quantity and body.food_item_id:
+        serving_size_g = _resolve_serving_grams(
+            db, body.food_item_id, body.serving_unit, body.serving_quantity
+        )
+    elif body.serving_unit and body.serving_quantity:
+        # No food item — use standard conversion
+        grams_per_unit = STANDARD_UNIT_GRAMS.get(body.serving_unit, 1.0)
+        serving_size_g = grams_per_unit * body.serving_quantity
+
     entry_data = {
         "user_id": user.id,
         "meal_type": body.meal_type,
         "food_description": body.food_description,
-        "serving_size_g": body.serving_size_g,
+        "serving_size_g": serving_size_g,
+        "serving_unit": body.serving_unit,
+        "serving_quantity": body.serving_quantity,
         "source": body.source,
         "logged_date": body.logged_date or date.today(),
         "food_item_id": body.food_item_id,
@@ -51,7 +76,7 @@ async def create_entry(
         food = db.query(FoodItem).filter(FoodItem.id == body.food_item_id).first()
         if not food:
             raise HTTPException(status_code=404, detail="Food item not found")
-        computed = _compute_macros_from_food(food, body.serving_size_g)
+        computed = _compute_macros_from_food(food, serving_size_g)
         entry_data["calories"] = body.calories if body.calories is not None else computed["calories"]
         entry_data["protein_g"] = body.protein_g if body.protein_g is not None else computed["protein_g"]
         entry_data["fat_g"] = body.fat_g if body.fat_g is not None else computed["fat_g"]
@@ -192,3 +217,23 @@ async def delete_entry(
 
     db.delete(entry)
     db.commit()
+
+
+def _resolve_serving_grams(
+    db: Session, food_item_id: int, unit: str, quantity: float
+) -> float:
+    """Look up gram equivalent for a unit from food_servings, fallback to standard."""
+    # Try to find a matching FoodServing for this food
+    servings = (
+        db.query(FoodServing)
+        .filter(FoodServing.food_item_id == food_item_id)
+        .all()
+    )
+    for s in servings:
+        desc = s.serving_description.lower()
+        if unit in desc or (unit == "cup" and "cup" in desc) or (unit == "tbsp" and "tbsp" in desc):
+            return s.serving_size_g * quantity
+
+    # Fallback to standard conversion
+    grams_per_unit = STANDARD_UNIT_GRAMS.get(unit, 1.0)
+    return grams_per_unit * quantity

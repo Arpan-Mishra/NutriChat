@@ -90,6 +90,17 @@ extension Endpoint {
         )
     }
 
+    static func suggestFood(query: String, limit: Int = 10) -> Endpoint {
+        Endpoint(
+            method: "GET",
+            path: "/food/suggest",
+            queryItems: [
+                URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "limit", value: String(limit)),
+            ]
+        )
+    }
+
     static func foodDetail(id: Int) -> Endpoint {
         Endpoint(method: "GET", path: "/food/\(id)")
     }

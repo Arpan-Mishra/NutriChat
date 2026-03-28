@@ -6,8 +6,28 @@ private let logger = Logger(subsystem: "app.nutrichat", category: "FoodService")
 /// Protocol for mocking in tests.
 protocol FoodServiceProtocol {
     func searchFood(query: String, limit: Int) async throws -> [FoodSearchResult]
+    func suggestFood(query: String, limit: Int) async throws -> [FoodSearchResult]
     func fetchFoodDetail(id: Int) async throws -> FoodItem
     func fetchByBarcode(code: String) async throws -> FoodSearchResult
+}
+
+/// A serving option for a food item (e.g. "1 cup" = 240g).
+struct FoodServing: Codable, Identifiable, Hashable {
+    let id: Int
+    let servingDescription: String
+    let servingSizeG: Double
+    var metricServingAmount: Double?
+    var metricServingUnit: String?
+    let isDefault: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case servingDescription = "serving_description"
+        case servingSizeG = "serving_size_g"
+        case metricServingAmount = "metric_serving_amount"
+        case metricServingUnit = "metric_serving_unit"
+        case isDefault = "is_default"
+    }
 }
 
 /// Search result from GET /food/search — lighter than full FoodItem.
@@ -22,6 +42,7 @@ struct FoodSearchResult: Codable, Identifiable, Hashable {
     let carbsPer100g: Double
     let servingSizeG: Double
     let servingDescription: String
+    var servings: [FoodServing]?
 
     /// Identifiable conformance uses foodId.
     var id: Int { foodId }
@@ -29,7 +50,7 @@ struct FoodSearchResult: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case foodId = "food_id"
         case foodName = "food_name"
-        case brand, source
+        case brand, source, servings
         case caloriesPer100g = "calories_per_100g"
         case proteinPer100g = "protein_per_100g"
         case fatPer100g = "fat_per_100g"
@@ -54,10 +75,16 @@ final class FoodService: FoodServiceProtocol {
     static let shared = FoodService()
     private init() {}
 
-    /// Search for food items — backend returns a plain array.
+    /// Search for food items — full layered search (local + external APIs).
     func searchFood(query: String, limit: Int = 20) async throws -> [FoodSearchResult] {
         logger.info("Searching food: \(query, privacy: .public)")
         return try await APIClient.shared.request(.searchFood(query: query, limit: limit))
+    }
+
+    /// Typeahead suggestions — local DB only, fast.
+    func suggestFood(query: String, limit: Int = 10) async throws -> [FoodSearchResult] {
+        logger.debug("Suggesting food: \(query, privacy: .public)")
+        return try await APIClient.shared.request(.suggestFood(query: query, limit: limit))
     }
 
     /// Fetch details for a single food item.

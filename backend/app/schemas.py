@@ -75,6 +75,17 @@ class TDEEResponse(BaseModel):
 
 # --- Food ---
 
+class FoodServingResponse(BaseModel):
+    id: int
+    serving_description: str
+    serving_size_g: float
+    metric_serving_amount: Optional[float] = None
+    metric_serving_unit: Optional[str] = None
+    is_default: bool
+
+    model_config = {"from_attributes": True}
+
+
 class FoodItemResponse(BaseModel):
     id: int
     external_id: Optional[str] = None
@@ -92,6 +103,7 @@ class FoodItemResponse(BaseModel):
     serving_description: str
     is_indian: bool
     verified: bool
+    servings: list[FoodServingResponse] = []
 
     model_config = {"from_attributes": True}
 
@@ -107,6 +119,7 @@ class FoodSearchResult(BaseModel):
     carbs_per_100g: float
     serving_size_g: float
     serving_description: str
+    servings: list[FoodServingResponse] = []
 
 
 class CustomFoodCreate(BaseModel):
@@ -131,6 +144,8 @@ class MealEntryCreate(BaseModel):
     meal_type: str = Field(..., pattern="^(breakfast|lunch|dinner|snack)$")
     food_description: str = Field(..., min_length=1)
     serving_size_g: float = Field(..., gt=0)
+    serving_unit: Optional[str] = Field(None, pattern="^(g|ml|cup|tbsp|tsp|serving|piece)$")
+    serving_quantity: Optional[float] = Field(None, gt=0)
     calories: Optional[float] = None  # auto-computed from food_item if not provided
     protein_g: Optional[float] = None
     fat_g: Optional[float] = None
@@ -148,6 +163,8 @@ class MealEntryResponse(BaseModel):
     meal_type: str
     food_description: str
     serving_size_g: float
+    serving_unit: Optional[str] = None
+    serving_quantity: Optional[float] = None
     calories: float
     protein_g: float
     fat_g: float

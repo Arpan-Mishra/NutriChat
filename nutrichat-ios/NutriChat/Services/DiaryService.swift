@@ -78,6 +78,8 @@ struct MealEntryCreate: Codable {
     var foodItemId: Int?
     var foodDescription: String?
     var servingSizeG: Double?
+    var servingUnit: String?
+    var servingQuantity: Double?
     var calories: Double?
     var proteinG: Double?
     var fatG: Double?
@@ -90,6 +92,8 @@ struct MealEntryCreate: Codable {
         case foodItemId = "food_item_id"
         case foodDescription = "food_description"
         case servingSizeG = "serving_size_g"
+        case servingUnit = "serving_unit"
+        case servingQuantity = "serving_quantity"
         case calories
         case proteinG = "protein_g"
         case fatG = "fat_g"

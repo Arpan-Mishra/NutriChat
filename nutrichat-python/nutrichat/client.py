@@ -108,6 +108,11 @@ class NutriChatClient:
             if date:
                 body["logged_date"] = date
 
+            # Pass through serving unit + quantity if provided
+            if "serving_unit" in item:
+                body["serving_unit"] = item["serving_unit"]
+                body["serving_quantity"] = float(item.get("number_of_units", 1))
+
             # Pass through macros if provided
             for key in ("calories", "protein_g", "fat_g", "carbs_g"):
                 if key in item:

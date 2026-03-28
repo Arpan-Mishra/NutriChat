@@ -3,10 +3,10 @@ from typing import Optional
 
 import httpx
 from sqlalchemy import or_, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
-from app.models import FoodItem
+from app.models import FoodItem, FoodServing
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -15,7 +15,7 @@ HTTPX_TIMEOUT = 10.0
 
 
 async def search_food(db: Session, query: str, limit: int = 20) -> list[dict]:
-    """Layered food search: local DB → USDA → Open Food Facts → Edamam.
+    """Layered food search: local DB → USDA → Open Food Facts → Edamam → FatSecret.
     Results from external APIs are cached into food_items table."""
     if not query or not query.strip():
         return []
@@ -61,13 +61,34 @@ async def search_food(db: Session, query: str, limit: int = 20) -> list[dict]:
                 results.append(r)
                 seen_ids.add(r["food_id"])
 
+    remaining = limit - len(results)
+    if remaining <= 0:
+        return results[:limit]
+
+    # Layer 5: FatSecret
+    if settings.fatsecret_consumer_key and settings.fatsecret_consumer_secret:
+        fs_results = await _search_fatsecret(db, query, remaining)
+        for r in fs_results:
+            if r["food_id"] not in seen_ids:
+                results.append(r)
+                seen_ids.add(r["food_id"])
+
     return results[:limit]
+
+
+async def suggest_food(db: Session, query: str, limit: int = 10) -> list[dict]:
+    """Lightweight typeahead — local DB only, no external API calls."""
+    if not query or not query.strip():
+        return []
+    return _search_local(db, query.strip(), limit)
 
 
 async def search_by_barcode(db: Session, barcode: str) -> Optional[dict]:
     """Search by barcode: local DB first, then Open Food Facts."""
     # Check local
-    item = db.query(FoodItem).filter(FoodItem.barcode == barcode).first()
+    item = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
+        FoodItem.barcode == barcode
+    ).first()
     if item:
         return _food_item_to_result(item)
 
@@ -92,13 +113,12 @@ async def search_by_barcode(db: Session, barcode: str) -> Optional[dict]:
 
 def _search_local(db: Session, query: str, limit: int) -> list[dict]:
     """Full-text search on food_items.name."""
-    # Use ILIKE for case-insensitive pattern matching
     pattern = f"%{query}%"
     items = (
         db.query(FoodItem)
+        .options(joinedload(FoodItem.servings))
         .filter(FoodItem.name.ilike(pattern))
         .order_by(
-            # Prioritize exact matches, then verified, then by name length (shorter = more relevant)
             FoodItem.verified.desc(),
             func.length(FoodItem.name),
         )
@@ -145,14 +165,12 @@ def _cache_usda_food(db: Session, food: dict) -> Optional[FoodItem]:
     if not fdc_id:
         return None
 
-    # Check if already cached
-    existing = db.query(FoodItem).filter(
+    existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
         FoodItem.external_id == fdc_id, FoodItem.source == "usda"
     ).first()
     if existing:
         return existing
 
-    # Extract nutrients
     nutrients = {}
     for nutrient in food.get("foodNutrients", []):
         name = nutrient.get("nutrientName", "").lower()
@@ -173,6 +191,9 @@ def _cache_usda_food(db: Session, food: dict) -> Optional[FoodItem]:
     if "calories" not in nutrients:
         return None
 
+    serving_desc = food.get("servingSize", "100g") if food.get("servingSize") else "100g"
+    serving_g = float(food.get("servingSizeUnit", 100)) if food.get("servingSizeUnit") else 100.0
+
     item = FoodItem(
         external_id=fdc_id,
         source="usda",
@@ -185,17 +206,17 @@ def _cache_usda_food(db: Session, food: dict) -> Optional[FoodItem]:
         fiber_per_100g=nutrients.get("fiber", 0),
         sodium_per_100g=nutrients.get("sodium", 0),
         serving_size_g=100,
-        serving_description=food.get("servingSize", "100g") if food.get("servingSize") else "100g",
+        serving_description=serving_desc,
         verified=True,
     )
     db.add(item)
     try:
         db.commit()
         db.refresh(item)
+        _create_default_serving(db, item)
     except Exception:
         db.rollback()
-        # Might be a race condition; try to find existing
-        existing = db.query(FoodItem).filter(
+        existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
             FoodItem.external_id == fdc_id, FoodItem.source == "usda"
         ).first()
         return existing
@@ -247,9 +268,10 @@ def _cache_off_product(db: Session, product: dict) -> Optional[FoodItem]:
     if not calories:
         return None
 
-    # Check if already cached by barcode
     if barcode:
-        existing = db.query(FoodItem).filter(FoodItem.barcode == barcode).first()
+        existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
+            FoodItem.barcode == barcode
+        ).first()
         if existing:
             return existing
 
@@ -273,10 +295,13 @@ def _cache_off_product(db: Session, product: dict) -> Optional[FoodItem]:
     try:
         db.commit()
         db.refresh(item)
+        _create_default_serving(db, item)
     except Exception:
         db.rollback()
         if barcode:
-            existing = db.query(FoodItem).filter(FoodItem.barcode == barcode).first()
+            existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
+                FoodItem.barcode == barcode
+            ).first()
             return existing
         return None
     return item
@@ -319,7 +344,7 @@ def _cache_edamam_food(db: Session, food: dict) -> Optional[FoodItem]:
     if not food_id:
         return None
 
-    existing = db.query(FoodItem).filter(
+    existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
         FoodItem.external_id == food_id, FoodItem.source == "edamam"
     ).first()
     if existing:
@@ -349,20 +374,164 @@ def _cache_edamam_food(db: Session, food: dict) -> Optional[FoodItem]:
     try:
         db.commit()
         db.refresh(item)
+        _create_default_serving(db, item)
     except Exception:
         db.rollback()
-        existing = db.query(FoodItem).filter(
+        existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
             FoodItem.external_id == food_id, FoodItem.source == "edamam"
         ).first()
         return existing
     return item
 
 
+# --- FatSecret ---
+
+async def _search_fatsecret(db: Session, query: str, limit: int) -> list[dict]:
+    """Search FatSecret API and cache results with multiple servings."""
+    from app.integrations.fatsecret import search_foods, get_food_servings
+
+    foods = await search_foods(query, max_results=min(limit, 10))
+    results = []
+
+    for food in foods[:limit]:
+        fs_food_id = food.get("food_id", "")
+        if not fs_food_id:
+            continue
+
+        # Check if already cached
+        existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
+            FoodItem.external_id == str(fs_food_id), FoodItem.source == "fatsecret"
+        ).first()
+        if existing:
+            results.append(_food_item_to_result(existing))
+            continue
+
+        # Fetch detailed servings
+        servings = await get_food_servings(str(fs_food_id))
+        if not servings:
+            continue
+
+        item = _cache_fatsecret_food(db, food, servings)
+        if item:
+            results.append(_food_item_to_result(item))
+
+    return results
+
+
+def _cache_fatsecret_food(
+    db: Session, food: dict, servings: list[dict]
+) -> Optional[FoodItem]:
+    """Cache a FatSecret food item with multiple servings."""
+    fs_food_id = str(food.get("food_id", ""))
+    food_name = food.get("food_name", "Unknown")
+    brand = food.get("brand_name")
+
+    # Find the "per 100g" serving or use the first serving to normalize
+    default_serving = None
+    for s in servings:
+        desc = s.get("serving_description", "").lower()
+        if "100g" in desc or "100 g" in desc:
+            default_serving = s
+            break
+    if not default_serving:
+        default_serving = servings[0]
+
+    # Extract per-100g values
+    cal = float(default_serving.get("calories", 0))
+    protein = float(default_serving.get("protein", 0))
+    fat = float(default_serving.get("fat", 0))
+    carbs = float(default_serving.get("carbohydrate", 0))
+    fiber = float(default_serving.get("fiber", 0))
+    sodium = float(default_serving.get("sodium", 0))
+    metric_amount = float(default_serving.get("metric_serving_amount", 100))
+    metric_unit = default_serving.get("metric_serving_unit", "g")
+
+    # Normalize to per-100g if the default serving isn't 100g
+    if metric_amount and metric_amount != 100 and metric_unit == "g":
+        factor = 100.0 / metric_amount
+        cal *= factor
+        protein *= factor
+        fat *= factor
+        carbs *= factor
+        fiber *= factor
+        sodium *= factor
+
+    if cal <= 0:
+        return None
+
+    item = FoodItem(
+        external_id=fs_food_id,
+        source="fatsecret",
+        name=food_name,
+        brand=brand,
+        calories_per_100g=round(cal, 1),
+        protein_per_100g=round(protein, 1),
+        fat_per_100g=round(fat, 1),
+        carbs_per_100g=round(carbs, 1),
+        fiber_per_100g=round(fiber, 1),
+        sodium_per_100g=round(sodium, 1),
+        serving_size_g=metric_amount if metric_unit == "g" else 100,
+        serving_description=default_serving.get("serving_description", "100g"),
+        verified=False,
+    )
+    db.add(item)
+    try:
+        db.commit()
+        db.refresh(item)
+    except Exception:
+        db.rollback()
+        existing = db.query(FoodItem).options(joinedload(FoodItem.servings)).filter(
+            FoodItem.external_id == fs_food_id, FoodItem.source == "fatsecret"
+        ).first()
+        return existing
+
+    # Store all available servings
+    for i, s in enumerate(servings):
+        m_amount = float(s.get("metric_serving_amount", 0)) if s.get("metric_serving_amount") else None
+        m_unit = s.get("metric_serving_unit")
+        serving_g = m_amount if m_amount and m_unit == "g" else 100.0
+
+        serving = FoodServing(
+            food_item_id=item.id,
+            serving_description=s.get("serving_description", "1 serving"),
+            serving_size_g=serving_g,
+            metric_serving_amount=m_amount,
+            metric_serving_unit=m_unit,
+            is_default=(i == 0),
+        )
+        db.add(serving)
+
+    try:
+        db.commit()
+        db.refresh(item)
+    except Exception:
+        db.rollback()
+
+    return item
+
+
 # --- Helpers ---
 
+def _create_default_serving(db: Session, item: FoodItem) -> None:
+    """Create a default FoodServing entry for a cached food item."""
+    serving = FoodServing(
+        food_item_id=item.id,
+        serving_description=item.serving_description or "100g",
+        serving_size_g=item.serving_size_g or 100,
+        metric_serving_amount=item.serving_size_g or 100,
+        metric_serving_unit="g",
+        is_default=True,
+    )
+    db.add(serving)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def _food_item_to_result(item: FoodItem) -> dict:
-    """Convert a FoodItem model to a search result dict."""
-    return {
+    """Convert a FoodItem model to a search result dict, including servings."""
+    result = {
         "food_id": item.id,
         "food_name": item.name,
         "brand": item.brand,
@@ -373,4 +542,20 @@ def _food_item_to_result(item: FoodItem) -> dict:
         "carbs_per_100g": item.carbs_per_100g,
         "serving_size_g": item.serving_size_g,
         "serving_description": item.serving_description,
+        "servings": [],
     }
+
+    if hasattr(item, "servings") and item.servings:
+        result["servings"] = [
+            {
+                "id": s.id,
+                "serving_description": s.serving_description,
+                "serving_size_g": s.serving_size_g,
+                "metric_serving_amount": s.metric_serving_amount,
+                "metric_serving_unit": s.metric_serving_unit,
+                "is_default": s.is_default,
+            }
+            for s in item.servings
+        ]
+
+    return result

@@ -68,6 +68,9 @@ struct FoodSearchView: View {
                 .textContentType(.none)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
+                .onSubmit {
+                    viewModel.handleSearchSubmitted()
+                }
                 .onChange(of: viewModel.searchQuery) { _, _ in
                     viewModel.handleSearchQueryChanged()
                 }
@@ -94,7 +97,7 @@ struct FoodSearchView: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isSearching {
+        if viewModel.isSearching && viewModel.searchResults.isEmpty {
             Spacer()
             ProgressView("Searching...")
             Spacer()
@@ -103,7 +106,7 @@ struct FoodSearchView: View {
             errorView(error)
             Spacer()
         } else if viewModel.searchResults.isEmpty && !viewModel.searchQuery.isEmpty
-                    && viewModel.searchQuery.count >= 2 {
+                    && viewModel.searchQuery.count >= 1 {
             Spacer()
             emptyStateView
             Spacer()
@@ -112,7 +115,19 @@ struct FoodSearchView: View {
             promptView
             Spacer()
         } else {
-            resultsList
+            VStack(spacing: 0) {
+                if viewModel.isSearchingFull {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Searching more sources...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                }
+                resultsList
+            }
         }
     }
 

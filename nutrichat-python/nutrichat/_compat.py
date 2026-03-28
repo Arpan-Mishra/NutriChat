@@ -15,7 +15,7 @@ def adapt_search_results(api_items: list[dict]) -> list[dict]:
     """
     adapted = []
     for item in api_items:
-        adapted.append({
+        result = {
             "food_id": str(item["food_id"]),
             "food_name": item["food_name"],
             "serving_description": item.get("serving_description", "100g"),
@@ -34,7 +34,20 @@ def adapt_search_results(api_items: list[dict]) -> list[dict]:
             * float(item.get("serving_size_g", 100))
             / 100.0,
             "match_score": float(item.get("match_score", 0.8)),
-        })
+        }
+
+        # Optional: available servings (additive, non-breaking)
+        if item.get("servings"):
+            result["available_servings"] = [
+                {
+                    "serving_description": s.get("serving_description", "1 serving"),
+                    "serving_size_g": float(s.get("serving_size_g", 100)),
+                    "metric_serving_unit": s.get("metric_serving_unit", "g"),
+                }
+                for s in item["servings"]
+            ]
+
+        adapted.append(result)
     return adapted
 
 

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     edamam_app_id: str = ""
     edamam_app_key: str = ""
 
+    # FatSecret Food Database
+    fatsecret_consumer_key: str = ""
+    fatsecret_consumer_secret: str = ""
+
     # Twilio (SMS/WhatsApp OTP delivery)
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
