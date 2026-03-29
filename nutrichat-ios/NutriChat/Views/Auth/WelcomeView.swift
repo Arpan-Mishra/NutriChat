@@ -8,17 +8,20 @@ struct WelcomeView: View {
         VStack(spacing: 32) {
             Spacer()
 
-            Image(systemName: "fork.knife.circle.fill")
-                .font(.system(size: 100))
-                .foregroundStyle(Color.accentColor)
+            Image("NutriChatLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 120, height: 120)
+                .accessibilityLabel("NutriChat logo")
 
             VStack(spacing: 12) {
                 Text("NutriChat")
                     .font(.largeTitle.bold())
 
-                Text("Track calories. Chat to log.")
+                Text("Track your nutrition, right on WhatsApp")
                     .font(.title3)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
 
                 Text("Log meals from your iPhone or WhatsApp.\nEverything stays in sync.")
                     .font(.subheadline)
@@ -40,10 +43,14 @@ struct WelcomeView: View {
             .padding(.horizontal, 24)
             .accessibilityLabel("Get started with NutriChat")
 
-            Text("By continuing, you agree to our Privacy Policy")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(.bottom, 16)
+            HStack(spacing: 0) {
+                Text("By continuing, you agree to our ")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Link("Privacy Policy", destination: URL(string: AppInfo.privacyPolicyURL)!)
+                    .font(.caption2)
+            }
+            .padding(.bottom, 16)
         }
         .padding()
     }

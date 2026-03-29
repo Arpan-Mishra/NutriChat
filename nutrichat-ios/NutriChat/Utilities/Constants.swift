@@ -16,6 +16,9 @@ enum AppInfo {
     static let bundleID = "app.nutrichat.NutriChat"
     static let deepLinkScheme = "nutrichat"
     static let minIOSVersion = "17.0"
+    static let privacyPolicyURL = "https://arpan-mishra.github.io/NutriChat/privacy-policy.html"
+    static let supportURL = "https://github.com/Arpan-Mishra/NutriChat/issues"
+    static let appVersion = "1.0.0"
 }
 
 enum Keychain {

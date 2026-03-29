@@ -87,6 +87,6 @@ struct AccountView: View {
     }
 
     private var privacyPolicyURL: URL {
-        URL(string: "https://nutrichat.app/privacy") ?? URL(string: "https://example.com")!
+        URL(string: AppInfo.privacyPolicyURL)!
     }
 }
