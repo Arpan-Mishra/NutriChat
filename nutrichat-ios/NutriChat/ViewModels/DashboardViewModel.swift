@@ -74,6 +74,8 @@ final class DashboardViewModel {
     // MARK: - Actions
 
     /// Fetch diary for the currently selected date.
+    /// Only shows error alert on first load (no existing data). On refresh failures,
+    /// keeps showing stale data and logs silently to avoid blocking the user.
     func fetchDiary() async {
         isLoading = true
         errorMessage = nil
@@ -82,8 +84,13 @@ final class DashboardViewModel {
         do {
             diary = try await diaryService.fetchDay(date: selectedDate)
             logger.info("Diary loaded for \(self.selectedDate.apiDateString, privacy: .public): \(self.diary?.allEntries.count ?? 0) entries")
+        } catch is CancellationError {
+            // Ignore — view disappeared or date changed
         } catch {
-            errorMessage = error.localizedDescription
+            // Only show error alert if we have no data to display
+            if diary == nil {
+                errorMessage = error.localizedDescription
+            }
             logger.error("Failed to load diary: \(error.localizedDescription, privacy: .public)")
         }
     }

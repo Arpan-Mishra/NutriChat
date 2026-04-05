@@ -55,8 +55,12 @@ final class ProfileViewModel {
             user = loadedUser
             syncGoalsFromUser(loadedUser)
             logger.info("Profile loaded: \(loadedUser.displayName ?? "unnamed", privacy: .public)")
+        } catch is CancellationError {
+            // Ignore
         } catch {
-            errorMessage = error.localizedDescription
+            if user == nil {
+                errorMessage = error.localizedDescription
+            }
             logger.error("Failed to load profile: \(error.localizedDescription, privacy: .public)")
         }
     }

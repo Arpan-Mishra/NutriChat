@@ -193,8 +193,9 @@ final class APIClient: Sendable {
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        config.waitsForConnectivity = true
         self.session = URLSession(configuration: config)
 
         self.decoder = JSONDecoder()
